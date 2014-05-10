@@ -227,13 +227,14 @@ ADD_COMMAND(7,  "ENABLE\0",         2, 0x87)  /* turn motor on/off */
 ADD_COMMAND(8,  "POS?\0",           2, 0x88)  /* get position of motor in [unit] */
 ADD_COMMAND(9,  "SAVECONF\0",       0, 0x89)  /* save current machine configuration */
 ADD_COMMAND(10, "LOADCONF\0",       0, 0x8A)  /* load last saved machine configuration */
+ADD_COMMAND(11, "ISMOVING?\0",      1, 0x8B)  /* check if motor is moving */
 
-#define TOTAL_NUMBER_OF_COMMANDS 11
+#define TOTAL_NUMBER_OF_COMMANDS 12
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
                                               &cmd_6_,  &cmd_7_,  &cmd_8_,
-                                              &cmd_9_,  &cmd_10_
+                                              &cmd_9_,  &cmd_10_, &cmd_11_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -2069,6 +2070,16 @@ RESET:
 
       case 0x8A:    /* LOADCONF: load last saved machine configuration */
         loadConfigFromEEPROM();
+        break;
+
+      case 0x8B:    /* ISMOVING? */
+        if(motor[(uint8_t)strtol(commandParam[0], (char **)NULL, 10)].desiredPosition -
+           motor[(uint8_t)strtol(commandParam[0], (char **)NULL, 10)].actualPosition){
+          sendText("1");
+        }
+        else{
+          sendText("0");
+        }
         break;
 
       default:
