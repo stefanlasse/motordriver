@@ -3,5 +3,9 @@
 *.map
 *.hex
 *.elf
+*.bin
+*.lst
+*.s
+*.srec
 *~
 .project
