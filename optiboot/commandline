@@ -1,0 +1,2 @@
+make clean && make atmega644 && avrdude -F -p m644 -P /dev/ttyUSB1 -U flash:w:optiboot_atmega644.hex -c AVR911
+

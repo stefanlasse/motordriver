@@ -1,0 +1,139 @@
+
+=================================================================
+|  MOTORDRIVER MANUAL                                  rev 001  |
+|  Stefan Lasse                                  21. Feb. 2014  |
+=================================================================
+
+Contents
+
+0. General information
+1. Pin configuration and usage
+2. Initial State and device access
+3. Limitations
+4. Instruction set
+5. What to do if I got problems?
+
+
+-----------------------------------------------------------------
+  0. General Information
+-----------------------------------------------------------------
+
+coming soon.
+
+
+-----------------------------------------------------------------
+  1. Pin configuration and usage
+-----------------------------------------------------------------
+
+The Pulser has 6 freely configurable independent pins which can
+be used for
+  - turning statically on or off (output)
+  - reading the actual pin state (input)
+  - executing a freely configurable repeating pulse pattern
+    which turns one pin on and off in a programmable time
+    sequence
+These 6 freely configurable pins are denoted by PIN1...PIN6.
+Turning a pin on means that it is set to 5 Volts.
+Turning a pin off means that it is set to 0 Volts.
+
+The Pulser has 2 special independent pins which can be used for
+  - counting events
+These 2 special pins are denoted by INT1 and INT2.
+Events can be
+  - a rising edge from 0V to 5V
+  - a falling edge from 5V to 0V
+  - a toggle, so both rising and falling edges are recognized
+
+-----------------------------------------------------------------
+  2. Initial state and device access
+-----------------------------------------------------------------
+
+On power up the Pulser is completely configured in a defined
+state:
+
+  PIN1 --> 0V, configured as output
+  PIN2 --> 0V, configured as output
+  PIN3 --> 0V, configured as output
+  PIN4 --> 0V, configured as output
+  PIN5 --> 0V, configured as output
+  PIN6 --> 0V, configured as output
+  INT1 --> disabled, configured as input
+  INT2 --> disabled, configured as input
+
+After power up the Pulser is accessible via a COM port from a
+PC. The configuration of the RS232 interface is
+  - 57600 Baud
+  - 8 bit character size
+  - no parity bit
+  - 1 stop bit
+  - no flow control
+
+-----------------------------------------------------------------
+  3. Limitations
+-----------------------------------------------------------------
+
+Measured values (statistics based on 1M measurements each)
+
+Risetime of a PIN switching from OFF to ON
+  mean: 34.3 ns
+  sdev: 523  ps
+  
+Falltime of a PIN switching from ON to OFF
+  mean: 33.3 ns
+  sdev: 492  ps
+
+Pulser mode frequency accuracy @ 50 kHz (20 us):
+  mean: + 57 Hz towards setup freq
+  sdev: 192 Hz
+  
+Pulser mode frequency accuracy @ 5 kHz (200 us):
+  mean: + 5.6 Hz towards setup freq
+  sdev: 1.92 Hz
+
+Pulser mode frequency accuracy @ 500 Hz (2 ms):
+  mean: + 0.56 Hz towards setup freq
+  sdev: 19.3  mHz
+  
+Maximum pulser mode periode is 8.7163 years.
+Minumum pulser mode periode is 20 us.
+The time step and therefore time resolution is
+always 1 us (from 10 us timebase upwards).
+
+-----------------------------------------------------------------
+  4. Instruction set
+-----------------------------------------------------------------
+
+The Pulser has the following commands which can be used. Note,
+that the command parser is case sensitive. The command parameters,
+denoted by <xxx>, must be separated by either SPACE or "," or ";"
+or TAB. The command is completed by sending a CRLF or LF.
+
+Command:  *RST
+Function: Resets the Pulser to the initial state.
+Example:  *RST
+
+Command:  *IDN?
+Function: Returnes the identification name of the pulser.
+Example:  *IDN?
+
+Command:  *IDN <pulser_idn>
+Function: Sets the identification of the pulser.
+Note:     The maximum number of characters is 20.
+Example:  *IDN NewPulserName
+          Sets the string "NewPulserName" as IDN.
+
+
+MOVEREL [motor] [value] [unit]
+
+-----------------------------------------------------------------
+  5. What to do if I got problems?
+-----------------------------------------------------------------
+
+This is easy: write an eMail to lasse.stefan@gmx.de
+
+
+
+
+
+
+
