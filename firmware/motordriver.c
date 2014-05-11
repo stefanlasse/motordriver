@@ -228,13 +228,15 @@ ADD_COMMAND(8,  "POS?\0",           2, 0x88)  /* get position of motor in [unit]
 ADD_COMMAND(9,  "SAVECONF\0",       0, 0x89)  /* save current machine configuration */
 ADD_COMMAND(10, "LOADCONF\0",       0, 0x8A)  /* load last saved machine configuration */
 ADD_COMMAND(11, "ISMOVING?\0",      1, 0x8B)  /* check if motor is moving */
+ADD_COMMAND(12, "GETANALOG\0",      1, 0x8C)  /* returns an ADC measurement */
 
-#define TOTAL_NUMBER_OF_COMMANDS 12
+#define TOTAL_NUMBER_OF_COMMANDS 13
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
                                               &cmd_6_,  &cmd_7_,  &cmd_8_,
-                                              &cmd_9_,  &cmd_10_, &cmd_11_
+                                              &cmd_9_,  &cmd_10_, &cmd_11_,
+                                              &cmd_12_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -701,11 +703,12 @@ void motorZeroRun(uint8_t i){
   /* in case we are at any possible zero position: move out */
   while(getADCvalue(i) < thres){
     while(getADCvalue(i) < thres){
-      moveMotorRelative(i, -15);
+      motor[i].desiredPosition = motor[i].actualPosition -15;
     }
     /* now we are directly before a possible zero position:
      * move 200 more steps away from zero point */
-    moveMotorRelative(i, -200);
+    //moveMotorRelative(i, -200);
+    motor[i].desiredPosition = motor[i].actualPosition -200;
   }
 
   /* start first search for zero point */
@@ -763,24 +766,6 @@ void motorZeroRun(uint8_t i){
 
 
 /* ---------------------------------------------------------------------
-    helperfunction for zero run, kick out before release
- --------------------------------------------------------------------- */
-void getGraph(void){
-
-  uint16_t i = 0;
-  uint16_t adc;
-
-  for(i = 0; i <= 5333; i++){
-    moveMotorRelative(MOTOR0, 1.0f);
-    adc = getADCvalue(MOTOR_SENS0);
-    sprintf(txString.buffer, "%d %d", i, adc);
-    sendText(txString.buffer);
-  }
-}
-
-
-
-/* ---------------------------------------------------------------------
     handles all motor movings
  --------------------------------------------------------------------- */
 void updateMotors(){
@@ -810,7 +795,7 @@ void updateMotors(){
 uint16_t getADCvalue(uint8_t sensPin){
 
   uint8_t i = 0;
-  uint8_t l,h;
+  uint8_t lowByte, highByte;
 
   /* select channel */
   ADMUX = (ADMUX & ~(0x1F)) | (sensPin & 0x1F);
@@ -825,9 +810,9 @@ uint16_t getADCvalue(uint8_t sensPin){
     while(ADCSRA & (1<<ADSC)){
       asm("nop");
     }
-    l = ADCL;
-    h = ADCH;
-    adc.ADCvalue += (h<<8)|l;
+    lowByte = ADCL;
+    highByte = ADCH;
+    adc.ADCvalue += (highByte<<8) | lowByte;
   }
 
   return (adc.ADCvalue / adc.numberOfMeasurements);
@@ -1595,7 +1580,6 @@ void updateMenu(void){
     }
   }
 
-
   /* all events have been handled. now reset the .readyToProcess's */
   buttonState.readyToProcess = 0;
   rotEnc.readyToProcess = 0;
@@ -1749,6 +1733,147 @@ uint8_t parseCommand(void){
   }
 
   return commandCode;
+}
+
+/* ---------------------------------------------------------------------
+    moves the motor to an absolute position
+ --------------------------------------------------------------------- */
+void commandMoveAbs(char* param0, char* param1, char* param2){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(strcmp(param2, "steps") == 0){
+    motor[i].desiredPosition = (int16_t)strtol(param1, (char **)NULL, 10);
+  }
+
+  /* TODO: this is not correct, xxxToSteps will be relative movement */
+  if(strcmp(param2, "deg") == 0){
+    degreeToSteps(i, (float)atof(param1), 1.0);
+  }
+  if(strcmp(param2, "pi") == 0){
+    radiansToSteps(i, (float)atof(param1), 1.0);
+  }
+
+  return;
+}
+
+
+/* ---------------------------------------------------------------------
+    moves the motor relative to the actual position
+ --------------------------------------------------------------------- */
+void commandMoveRel(char* param0, char* param1, char* param2){
+
+  uint8_t i = 0;
+
+  i   = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(strcmp(param2, "steps") == 0){
+    motor[i].desiredPosition = motor[i].actualPosition + (int16_t)strtol(param1, (char **)NULL, 10);
+  }
+  if(strcmp(param2, "deg") == 0){
+    degreeToSteps(i, (float)atof(commandParam[1]), 1.0f);
+  }
+  if(strcmp(param2, "pi") == 0){
+    radiansToSteps(i, (float)atof(commandParam[1]), 1.0f);
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    enables/disables a motor
+ --------------------------------------------------------------------- */
+void commandEnable(char* param0, char* param1){
+
+  uint8_t i   = 0;
+  uint8_t val = 0;
+
+  i   = (uint8_t)strtol(param0, (char **)NULL, 10);
+  val = (uint8_t)strtol(param1, (char **)NULL, 10);
+
+  if(i > MOTOR3){
+    return;
+  }
+  else{
+    if(val){
+      setMotorState(i, ON);
+    }
+    else{
+      setMotorState(i, OFF);
+    }
+  }
+
+  return;
+}
+
+
+/* ---------------------------------------------------------------------
+    returns the actual motor position as string
+    the format depends on the given unit
+ --------------------------------------------------------------------- */
+char* commandGetMotorPosition(char* param0, char* param1){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(strcmp(param1, "steps") == 0){
+    sprintf(txString.buffer, "%d step\0", motor[i].actualPosition);
+  }
+  else if(strcmp(param1, "deg") == 0){
+    sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+  }
+  else if(strcmp(param1, "pi") == 0){
+    sprintf(txString.buffer, "%f pi\0", stepsToRadian(i, motor[i].actualPosition));
+  }
+  else{
+    /* wrong unit argument returns in degree */
+    sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    returns whether a motor is moving or not
+ --------------------------------------------------------------------- */
+char* commandIsMoving(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
+  if(motor[i].desiredPosition - motor[i].actualPosition){
+    sprintf(txString.buffer, "1\0");
+  }
+  else{
+    sprintf(txString.buffer, "0\0");
+  }
+
+  return txString.buffer;
+}
+
+
+/* ---------------------------------------------------------------------
+    returns a measured analog value
+ --------------------------------------------------------------------- */
+char* commandGetAnalog(char* param0){
+
+  uint8_t i = 0;
+  uint16_t val = 0;
+
+  i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
+
+  if((i < MOTOR_SENS0) || (i > MOTOR_SENS3)){
+    sprintf(txString.buffer, "-1\0"); /* indicates an error */
+  }
+  else{
+    val = getADCvalue(i);
+    sprintf(txString.buffer, "%d\0", val);
+  }
+
+  return txString.buffer;
 }
 
 /* =====================================================================
@@ -1930,6 +2055,8 @@ int main(void){
   uint8_t commandCode;
   uint8_t i,j;
 
+  int16_t p0, p1, p2, p3; /* for command handling */
+
   /* initialize command parameter list */
   commandParam = (char**)malloc(NUMBER_OF_PARAMETERS * sizeof(char*));
   for(i = 0; i < NUMBER_OF_PARAMETERS; i++){
@@ -1939,7 +2066,7 @@ int main(void){
     }
   }
 
-  /* initialize TX and RX buffers */
+  /* initialize TX and RX buffers for USART serial interface */
   rxString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
   txString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
 
@@ -1972,9 +2099,6 @@ RESET:
   /* start the never ending story */
   for(;;){
 
-    /* update motors */
-    //updateMotors();
-
     /* check for manual changes */
     updateMenu();
 
@@ -2005,30 +2129,12 @@ RESET:
         break;
 
       case 0x84:    /* MOVEABS */
-        i = (uint8_t)atoi(commandParam[0]);
-        if(strcmp(commandParam[2], "steps") == 0){
-          motor[i].desiredPosition = (int16_t)atoi(commandParam[1]);
-        }
-        if(strcmp(commandParam[2], "deg") == 0){
-          degreeToSteps(i, (float)atof(commandParam[1]), 1.0);
-        }
-        if(strcmp(commandParam[2], "pi") == 0){
-          radiansToSteps(i, (float)atof(commandParam[1]), 1.0);
-        }
+        commandMoveAbs(commandParam[0], commandParam[1], commandParam[2]);
         updateDisplayChangeValues(menu.actualDisplayedMenu);
         break;
 
       case 0x85:    /* MOVEREL */
-        if(strcmp(commandParam[2], "steps") == 0){
-          motor[(uint8_t)atoi(commandParam[0])].desiredPosition
-           = motor[(uint8_t)atoi(commandParam[0])].actualPosition + (int16_t)atoi(commandParam[1]);
-        }
-        if(strcmp(commandParam[2], "deg") == 0){
-          degreeToSteps((uint8_t)atoi(commandParam[0]), (float)atof(commandParam[1]), 1.0);
-        }
-        if(strcmp(commandParam[2], "pi") == 0){
-          radiansToSteps((uint8_t)atoi(commandParam[0]), (float)atof(commandParam[1]), 1.0);
-        }
+        commandMoveRel(commandParam[0], commandParam[1], commandParam[2]);
         updateDisplayChangeValues(menu.actualDisplayedMenu);
         break;
 
@@ -2037,32 +2143,12 @@ RESET:
         break;
 
       case 0x87:    /* ENABLE */
-        setMotorState((uint8_t)strtol(commandParam[0], (char **)NULL, 10),
-                      (uint8_t)strtol(commandParam[1], (char **)NULL, 10));
+        commandEnable(commandParam[0], commandParam[1]);
         break;
 
       case 0x88:    /* POS? --> get position in [unit] */
-        i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
-
-
-
-        switch(motor[i].stepUnit){
-          case MOTOR_STEP_UNIT_STEP:
-            sprintf(txString.buffer, "%d step\0", motor[i].actualPosition);
-            break;
-
-          case MOTOR_STEP_UNIT_DEGREE:
-            sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
-            break;
-
-          case MOTOR_STEP_UNIT_RADIAN:
-            sprintf(txString.buffer, "%f rad\0", stepsToRadian(i, motor[i].actualPosition));
-            break;
-
-          default:
-            break;
-        }
-        sendText(txString.buffer);
+        sendText(commandGetMotorPosition(commandParam[0], commandParam[1]));
+        break;
 
       case 0x89:    /* SAVECONF: save current machine configuration */
         saveConfigToEEPROM();
@@ -2073,13 +2159,11 @@ RESET:
         break;
 
       case 0x8B:    /* ISMOVING? */
-        if(motor[(uint8_t)strtol(commandParam[0], (char **)NULL, 10)].desiredPosition -
-           motor[(uint8_t)strtol(commandParam[0], (char **)NULL, 10)].actualPosition){
-          sendText("1");
-        }
-        else{
-          sendText("0");
-        }
+        sendText(commandIsMoving(commandParam[0]));
+        break;
+
+      case 0x8C:    /* GETANALOG */
+        sendText(commandGetAnalog(commandParam[0]));
         break;
 
       default:
