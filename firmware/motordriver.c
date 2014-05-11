@@ -70,11 +70,13 @@
 #define MOTOR1    1
 #define MOTOR2    2
 #define MOTOR3    3
+#define MAX_MOTOR MOTOR3
 
 #define MOTOR_SENS0     PA0
 #define MOTOR_SENS1     PA1
 #define MOTOR_SENS2     PA2
 #define MOTOR_SENS3     PA3
+#define MOTOR_SENS_MAX  MOTOR_SENS3
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
@@ -1744,6 +1746,10 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
+  if(i > MAX_MOTOR){
+    return;
+  }
+
   if(strcmp(param2, "steps") == 0){
     motor[i].desiredPosition = (int16_t)strtol(param1, (char **)NULL, 10);
   }
@@ -1767,7 +1773,11 @@ void commandMoveRel(char* param0, char* param1, char* param2){
 
   uint8_t i = 0;
 
-  i   = (uint8_t)strtol(param0, (char **)NULL, 10);
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i > MAX_MOTOR){
+    return;
+  }
 
   if(strcmp(param2, "steps") == 0){
     motor[i].desiredPosition = motor[i].actualPosition + (int16_t)strtol(param1, (char **)NULL, 10);
@@ -1793,7 +1803,7 @@ void commandEnable(char* param0, char* param1){
   i   = (uint8_t)strtol(param0, (char **)NULL, 10);
   val = (uint8_t)strtol(param1, (char **)NULL, 10);
 
-  if(i > MOTOR3){
+  if(i > MAX_MOTOR){
     return;
   }
   else{
@@ -1819,18 +1829,23 @@ char* commandGetMotorPosition(char* param0, char* param1){
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
-  if(strcmp(param1, "steps") == 0){
-    sprintf(txString.buffer, "%d step\0", motor[i].actualPosition);
-  }
-  else if(strcmp(param1, "deg") == 0){
-    sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
-  }
-  else if(strcmp(param1, "pi") == 0){
-    sprintf(txString.buffer, "%f pi\0", stepsToRadian(i, motor[i].actualPosition));
+  if(i > MAX_MOTOR){
+    sprintf(txString.buffer, "unknown motor\0");
   }
   else{
-    /* wrong unit argument returns in degree */
-    sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+    if(strcmp(param1, "steps") == 0){
+      sprintf(txString.buffer, "%d steps\0", motor[i].actualPosition);
+    }
+    else if(strcmp(param1, "deg") == 0){
+      sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+    }
+    else if(strcmp(param1, "pi") == 0){
+      sprintf(txString.buffer, "%f pi\0", stepsToRadian(i, motor[i].actualPosition));
+    }
+    else{
+      /* wrong unit argument returns in degree */
+      sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+    }
   }
 
   return txString.buffer;
@@ -1844,11 +1859,17 @@ char* commandIsMoving(char* param0){
   uint8_t i = 0;
 
   i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
-  if(motor[i].desiredPosition - motor[i].actualPosition){
-    sprintf(txString.buffer, "1\0");
+
+  if(i > MAX_MOTOR){
+    sprintf(txString.buffer, "unknown motor\0");
   }
   else{
-    sprintf(txString.buffer, "0\0");
+    if(motor[i].desiredPosition - motor[i].actualPosition){
+      sprintf(txString.buffer, "1\0");
+    }
+    else{
+      sprintf(txString.buffer, "0\0");
+    }
   }
 
   return txString.buffer;
@@ -1865,7 +1886,7 @@ char* commandGetAnalog(char* param0){
 
   i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
 
-  if((i < MOTOR_SENS0) || (i > MOTOR_SENS3)){
+  if((i < MOTOR_SENS0) || (i > MOTOR_SENS_MAX)){
     sprintf(txString.buffer, "-1\0"); /* indicates an error */
   }
   else{
@@ -2025,6 +2046,8 @@ ISR(TIMER2_COMPA_vect){
     }
   }
 
+  /* TODO: correct step error */
+
   PORTC |= outputDir;     /* set direction */
   _delay_us(1.0);         /* sync */
   PORTC |= outputStep;    /* make exactly one step steps */
@@ -2054,8 +2077,6 @@ int main(void){
 
   uint8_t commandCode;
   uint8_t i,j;
-
-  int16_t p0, p1, p2, p3; /* for command handling */
 
   /* initialize command parameter list */
   commandParam = (char**)malloc(NUMBER_OF_PARAMETERS * sizeof(char*));
