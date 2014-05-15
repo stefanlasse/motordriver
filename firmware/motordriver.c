@@ -697,7 +697,8 @@ void moveMotorAbsolute(uint8_t mot, float val){
  --------------------------------------------------------------------- */
 void defineOpticalZeroPosition(uint8_t i, int8_t step){
 
-
+  motor[i].desiredPosition = motor[i].actualPosition + step;
+  motor[i].opticalZeroPosition = motor[i].desiredPosition;
 
   return;
 }
@@ -780,12 +781,12 @@ void motorZeroRun(uint8_t i){
   /* third step:
    * got to the internal saved optical zero position
    */
+  motor[i].waitBetweenSteps = keepWaitTime;
   moveMotorRelative(i, motor[i].opticalZeroPosition);
 
   /* no set motor into a defined state */
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
-  motor[i].waitBetweenSteps = keepWaitTime;
 
   /* now allow motor movements again */
   initMotorDelayTimer();
@@ -2163,6 +2164,10 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
       sprintf(txString.buffer, "err: time too short\0");
       sendText(txString.buffer);
       return;
+    }
+    if(waitTime > 9999){
+    sprintf(txString.buffer, "err: time too long\0");
+    sendText(txString.buffer);
     }
 
     if(strcmp(param1, "CW")  == 0){
