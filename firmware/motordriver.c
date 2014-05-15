@@ -24,7 +24,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define F_CPU 20000000 /* in Hz */
+#define F_CPU 20000000UL /* in Hz */
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -80,18 +80,18 @@
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
-#define BUTTON_MOTOR1       PB4
-#define BUTTON_MOTOR2       PB5
-#define BUTTON_MOTOR3       PB6
-#define BUTTON_MOTOR4       PB7
+#define BUTTON_MOTOR0       PB4
+#define BUTTON_MOTOR1       PB5
+#define BUTTON_MOTOR2       PB6
+#define BUTTON_MOTOR3       PB7
 #define BUTTON_MENUESCAPE   PB3
 #define BUTTON_ROT_ENC      PB0
 
 /* do not change ALL_BUTTONS */
-#define ALL_BUTTONS ((1<<BUTTON_MOTOR1)|     \
+#define ALL_BUTTONS ((1<<BUTTON_MOTOR0)|     \
+                     (1<<BUTTON_MOTOR1)|     \
                      (1<<BUTTON_MOTOR2)|     \
                      (1<<BUTTON_MOTOR3)|     \
-                     (1<<BUTTON_MOTOR4)|     \
                      (1<<BUTTON_MENUESCAPE)| \
                      (1<<BUTTON_ROT_ENC))
 
@@ -226,11 +226,23 @@ ADD_COMMAND(4,  "MOVEABS\0",        3, 0x84)  /* move to absolute position with 
 ADD_COMMAND(5,  "MOVEREL\0",        3, 0x85)  /* move relative to actual position */
 ADD_COMMAND(6,  "ZERORUN\0",        1, 0x86)  /* calibrate motor position */
 ADD_COMMAND(7,  "ENABLE\0",         2, 0x87)  /* turn motor on/off */
-ADD_COMMAND(8,  "POS?\0",           2, 0x88)  /* get position of motor in [unit] */
+ADD_COMMAND(8,  "GETPOS\0",         2, 0x88)  /* get position of motor in [unit] */
 ADD_COMMAND(9,  "SAVECONF\0",       0, 0x89)  /* save current machine configuration */
 ADD_COMMAND(10, "LOADCONF\0",       0, 0x8A)  /* load last saved machine configuration */
-ADD_COMMAND(11, "ISMOVING?\0",      1, 0x8B)  /* check if motor is moving */
+ADD_COMMAND(11, "ISMOVING\0",       1, 0x8B)  /* check if motor is moving */
 ADD_COMMAND(12, "GETANALOG\0",      1, 0x8C)  /* returns an ADC measurement */
+
+ADD_COMMAND(13, "GETOPTZEROPOS\0",  1, 0x8D)  /* returns saved optical zero position */
+ADD_COMMAND(14, "SETOPTZEROPOS\0",  2, 0x8E)  /* sets the optical zero position in steps */
+ADD_COMMAND(15, "GETGEARRATIO\0",   1, 0x8F)  /* returns the mechanical gear ratio */
+ADD_COMMAND(16, "SETGEARRATIO\0",   2, 0x90)  /* set mechanical gear ratio for a motor */
+ADD_COMMAND(17, "GETFULLROT\0",     1, 0x91)  /* returns steps per full rotation */
+ADD_COMMAND(18, "SETFULLROT\0",     2, 0x92)  /* sets steps per full rotation */
+ADD_COMMAND(19, "GETSUBSTEPS\0",    1, 0x93)  /* retuns the adjusted substeps  */
+ADD_COMMAND(20, "SETSUBSTEPS\0",    2, 0x94)  /* sets the substeps for a motor */
+ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between two singele steps */
+ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two single steps  */
+ADD_COMMAND(23, "SETCONSTSPEED\0",  2, 0x97)  /* sets a constant angular velocity */
 
 #define TOTAL_NUMBER_OF_COMMANDS 13
 
@@ -281,7 +293,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "Motor Driver\0"                  )
+ADD_DISPLAY_TEXT(0 , "Motor Driver\n \0"               )
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
 ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
@@ -322,13 +334,23 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
 #define MENU_SCROLL_MODE    2 /* scroll through the menu */
 #define MENU_VALUE_CHANGE   3 /* change a selected value */
 
+#define NUMBER_DISPLAY_MENU_STRINGS   2
+#define DISPLAY_MENU_STRING_LENGTH    17
+#define NUMBER_DISPLAY_VALUE_STRINGS  4
+#define DISPLAY_VALUE_STRING_LENGTH   9
+
 
 typedef struct{
 
-  uint8_t actualDisplayedMenu;
-  uint8_t menuMode;         /* either in MENU_CHANGE_MODE or in MENU_SCROLL_MODE */
-  uint8_t selectedMotor;    /* keep the selected motor for value changing */
-  char    asciiValue[4][9]; /* for values to be changed */
+  uint8_t newDisplayedMenu;
+  uint8_t currentDisplayedMenu;
+  uint8_t newMenuMode;            /* either in MENU_CHANGE_MODE or in MENU_SCROLL_MODE */
+  uint8_t currentMenuMode;
+  uint8_t selectedMotor;          /* keep the selected motor for value changing */
+  char**  currentDisplayValue;    /* for values to be changed */
+  char**  newDisplayValue;        /* for values to be changed */
+  char**  currentMenuText;        /* for menu texts */
+  char**  newMenuText;            /* for menu texts */
 
 }menuInfo;
 
@@ -359,7 +381,6 @@ char EEMEM IDNtext[IDN_STRING_LENGTH + 1];
 
 /* keep motor information in EEPROM */
 int16_t  EEMEM opticalZeroPositionEE[4];
-float    EEMEM stepErrorEE[4];
 float    EEMEM gearRatioEE[4];
 float    EEMEM stepsPerFullRotationEE[4];
 float    EEMEM subStepsEE[4];
@@ -387,7 +408,7 @@ void moveMotorAbsolute(uint8_t mot, float val);
 void motorZeroRun(uint8_t motor);
 uint16_t getADCvalue(uint8_t sensPin);
 
-int16_t getRotaryEncoderEvent(void);
+int8_t getRotaryEncoderEvent(void);
 uint8_t getButtonEvent(void);
 
 /* parser */
@@ -403,7 +424,7 @@ uint8_t parseCommand();
  --------------------------------------------------------------------- */
 void initDataStructs(void){
 
-  uint8_t i;
+  uint8_t i, j;
 
   for(i = 0; i <= 3; i++){
     motor[i].actualPosition       = 0;
@@ -418,7 +439,7 @@ void initDataStructs(void){
     motor[i].stepMultiplier       = 1.0;
     motor[i].stepUnit             = MOTOR_STEP_UNIT_DEGREE;
     motor[i].waitBetweenSteps     = 3;
-    motor[i].delayCounter = motor[i].waitBetweenSteps;
+    motor[i].delayCounter         = motor[i].waitBetweenSteps;
     motor[i].angularVelocity      = 0;
   }
 
@@ -437,12 +458,12 @@ void initDataStructs(void){
   adc.conversionCount = 0;
   adc.numberOfMeasurements = 8;
 
-  menu.actualDisplayedMenu = 0;
-  menu.menuMode = MENU_SCROLL_MODE;
+  menu.newDisplayedMenu = MENU_MAIN;
+  menu.currentDisplayedMenu = 42;
+  menu.newMenuMode = MENU_SCROLL_MODE;
+  menu.currentMenuMode = 42;
   menu.selectedMotor = NO_MOTOR;
-  for(i = 0; i <= 3; i++){
-    strcpy(menu.asciiValue[i], "0\0");
-  }
+  /* strings are initialized in main */
 
   buttonState.inputRegister = 0;
   buttonState.inDebouncingMode = 0;
@@ -644,10 +665,6 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
     }
   }
 
-  /* TODO: maybe send info that movement is finished */
-
-  /* TODO: update motor position in memory */
-
   return;
 }
 
@@ -685,7 +702,7 @@ void defineOpticalZeroPosition(uint8_t i, int8_t step){
  --------------------------------------------------------------------- */
 void motorZeroRun(uint8_t i){
 
-  int16_t keepWaitTime = 0;
+  uint16_t keepWaitTime = 0;
   float stepsPerRound = 0.0f;
   uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
@@ -696,6 +713,8 @@ void motorZeroRun(uint8_t i){
                   * motor[i].gearRatio
                   * motor[i].subSteps;
 
+  /* TODO: some updates here are needed because of new interrupt driven motors */
+
   /* fist step:
    * move 360 degree to find the roughly position of the magnetic zero point.
    * this will be done with fast moving
@@ -705,11 +724,10 @@ void motorZeroRun(uint8_t i){
   /* in case we are at any possible zero position: move out */
   while(getADCvalue(i) < thres){
     while(getADCvalue(i) < thres){
-      motor[i].desiredPosition = motor[i].actualPosition -15;
+      motor[i].desiredPosition = motor[i].actualPosition - 15;
     }
     /* now we are directly before a possible zero position:
      * move 200 more steps away from zero point */
-    //moveMotorRelative(i, -200);
     motor[i].desiredPosition = motor[i].actualPosition -200;
   }
 
@@ -734,7 +752,7 @@ void motorZeroRun(uint8_t i){
    */
 
   /* second step:
-   * move again to 100 steps before the former found zero position fast.
+   * move again to 200 steps before the former found zero position fast.
    * then move slowly to find the exact magnetic zero position.
    */
 
@@ -749,43 +767,16 @@ void motorZeroRun(uint8_t i){
     moveMotorRelative(i, 1);
   }
   /* and here we found our magnetic zero position :-) */
-  /* reset actual zero position */
 
   /* third step:
-   * read the offset steps form magnetic zero position to the position
-   * of the fast axis of the waveplate and move to this position.
-   * then calibration is finished.
+   * got to the internal saved optical zero position
    */
   moveMotorRelative(i, motor[i].opticalZeroPosition);
 
+  /* no set motor into a defined state */
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
-
   motor[i].waitBetweenSteps = keepWaitTime;
-
-  return;
-}
-
-
-/* ---------------------------------------------------------------------
-    handles all motor movings
- --------------------------------------------------------------------- */
-void updateMotors(){
-
-  uint8_t i = 0;
-  int16_t stepDiff = 0;
-
-  for(i = 0; i < 4; i++){
-    stepDiff = motor[i].desiredPosition - motor[i].actualPosition;
-    if(stepDiff == 0){
-      continue;
-    }
-    else{
-      moveMotorRelative(i, stepDiff);
-      motor[i].actualPosition = motor[i].desiredPosition;
-      updateDisplayChangeValues(menu.actualDisplayedMenu);
-    }
-  }
 
   return;
 }
@@ -833,7 +824,6 @@ void saveConfigToEEPROM(void){
 
   for(i = 0; i < 4; i++){
     eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_update_block(&(motor[i].stepError), &(stepErrorEE[i]), sizeof(float));
     eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
     eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(float));
@@ -858,7 +848,6 @@ void loadConfigFromEEPROM(void){
 
   for(i = 0; i < 4; i++){
     eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_read_block(&(motor[i].stepError), &(stepErrorEE[i]), sizeof(float));
     eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
     eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(float));
@@ -1133,9 +1122,9 @@ float stepsToDegree(uint8_t mot, int16_t steps){
   float radian = 0.0f;
 
   radian = (float)(steps)
-                  *( (360.0)/(motor[mot].gearRatio
-                             *motor[mot].subSteps
-                             *motor[mot].stepsPerFullRotation) );
+                  *( (360.0f)/(motor[mot].gearRatio
+                              *motor[mot].subSteps
+                              *motor[mot].stepsPerFullRotation) );
 
   return radian;
 
@@ -1151,7 +1140,7 @@ void radiansToSteps(uint8_t mot, float rad, float multiply){
   roundedSteps = round(rad * multiply *
           ((motor[mot].stepsPerFullRotation
            *motor[mot].gearRatio
-           *motor[mot].subSteps)/(2.0)));
+           *motor[mot].subSteps)/(2.0f)));
 
   motor[mot].desiredPosition
   = motor[mot].actualPosition
@@ -1162,7 +1151,7 @@ void radiansToSteps(uint8_t mot, float rad, float multiply){
       rad * multiply *
       ((motor[mot].stepsPerFullRotation
        *motor[mot].gearRatio
-       *motor[mot].subSteps)/(2.0))
+       *motor[mot].subSteps)/(2.0f))
        - roundedSteps;
   sprintf(txString.buffer, "err: %f", motor[mot].stepError);
   sendText(txString.buffer);
@@ -1178,33 +1167,66 @@ float stepsToRadian(uint8_t mot, int16_t steps){
   float radian = 0.0f;
 
   radian = (float)(steps)
-                  *( (2.0)/(motor[mot].gearRatio
-                           *motor[mot].subSteps
-                           *motor[mot].stepsPerFullRotation) );
+                  *( (2.0f)/(motor[mot].gearRatio
+                            *motor[mot].subSteps
+                            *motor[mot].stepsPerFullRotation) );
 
   return radian;
 }
 
 /* ---------------------------------------------------------------------
-   replaces the actual display content with another content
+   replaces the actual display content with another content if
+   necessary
  --------------------------------------------------------------------- */
-void updateDisplay(char *buffer){
+void updateDisplay(void){
 
   uint8_t j = 0;
 
-  lcd_clear();
+  switch(menu.currentMenuMode){
+    case MENU_SCROLL_MODE:
+      if(menu.currentDisplayedMenu != menu.newDisplayedMenu){
+        changeDisplayMenu(menu.newDisplayedMenu);
+        lcd_setcursor(0, 1);  /* line 1 */
+        lcd_string(menu.newMenuText[0]);
+        strcpy(menu.currentMenuText[0], menu.newMenuText[0]);
+        lcd_setcursor(0, 2);  /* line 2 */
+        lcd_string(menu.newMenuText[1]);
+        strcpy(menu.currentMenuText[1], menu.newMenuText[1]);
+        menu.currentDisplayedMenu = menu.newDisplayedMenu;
+      }
+      break;
 
-  lcd_setcursor(0, 1);  /* write first line on display */
-  while(buffer[j]){
-    if(buffer[j] != '\n'){
-      lcd_data(buffer[j]);
-    }
-    else{
-      /* found line break: from now on write second display line */
-      lcd_setcursor(0, 2);
-    }
-    j++;
+    case MENU_CHANGE_MODE:
+    case MENU_VALUE_CHANGE:
+      updateDisplayChangeValues(menu.currentDisplayedMenu);
+      if(strcmp(menu.currentDisplayValue[0], menu.newDisplayValue[0])){
+        lcd_setcursor(0, 1);
+        lcd_string(menu.newDisplayValue[0]);
+        strcpy(menu.currentDisplayValue[0], menu.newDisplayValue[0]);
+      }
+      if(strcmp(menu.currentDisplayValue[1], menu.newDisplayValue[1])){
+        lcd_setcursor(8, 1);
+        lcd_string(menu.newDisplayValue[1]);
+        strcpy(menu.currentDisplayValue[1], menu.newDisplayValue[1]);
+      }
+      if(strcmp(menu.currentDisplayValue[2], menu.newDisplayValue[2])){
+        lcd_setcursor(0, 2);
+        lcd_string(menu.newDisplayValue[2]);
+        strcpy(menu.currentDisplayValue[2], menu.newDisplayValue[2]);
+      }
+      if(strcmp(menu.currentDisplayValue[3], menu.newDisplayValue[3])){
+        lcd_setcursor(8, 2);
+        lcd_string(menu.newDisplayValue[3]);
+        strcpy(menu.currentDisplayValue[3], menu.newDisplayValue[3]);
+      }
+      break;
+
+    default:
+      asm("nop");
+      break;
   }
+
+  menu.currentMenuMode = menu.newMenuMode;
 
   return;
 }
@@ -1218,13 +1240,27 @@ void changeDisplayMenu(uint8_t i){
   char *menuText;
 
   uint8_t j = 0;
+  uint8_t k = 0;
+  uint8_t sLen = 0;
 
-  menuPtr = (menuItem*)pgm_read_word(&menuList[i]);
+  menuPtr  = (menuItem*)pgm_read_word(&menuList[i]);
   menuText = (char*)pgm_read_word(&menuPtr->displayText);
 
   strcpy_P(displayBuffer, menuText);
 
-  updateDisplay(displayBuffer);
+  displayBuffer = strtok(displayBuffer, "\n");
+  strcpy(menu.newMenuText[0], displayBuffer);
+  displayBuffer = strtok(NULL, "\0");
+  strcpy(menu.newMenuText[1], displayBuffer);
+
+  /* fill the strings up with spaces */
+  for(j = 0; j < NUMBER_DISPLAY_MENU_STRINGS; j++){
+    sLen = strlen(menu.newMenuText[j]);
+    for(k = sLen; k < DISPLAY_MENU_STRING_LENGTH-1; k++){
+      menu.newMenuText[j][k] = ' ';
+    }
+    menu.newMenuText[j][DISPLAY_MENU_STRING_LENGTH-1] = '\0';
+  }
 
   return;
 }
@@ -1235,11 +1271,11 @@ void changeDisplayMenu(uint8_t i){
  --------------------------------------------------------------------- */
 void updateDisplayChangeValues(uint8_t thisMenu){
 
-  uint8_t i = 0;
+  uint8_t i, j;
   uint8_t state;
   menuItem *menuPtr;
 
-  uint8_t sLen1, sLen2;
+  uint8_t sLen, sLen1, sLen2;
   uint8_t numSpaces = 0;
 
   /* determine which values shall be changed */
@@ -1249,27 +1285,27 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   /* load the values of all 4 motors */
   switch(state){
     case MENU_MAIN:   /* main menu point, no values here to change */
-      sprintf(menu.asciiValue[0], "3.PI  Un\0");
-      sprintf(menu.asciiValue[1], "i Stutt.\0");
-      sprintf(menu.asciiValue[2], "Version\0");
-      sprintf(menu.asciiValue[3], FW_VERSION);
+      sprintf(menu.newDisplayValue[0], "3.PI  Un");
+      sprintf(menu.newDisplayValue[1], "i Stutt.");
+      sprintf(menu.newDisplayValue[2], "Version");
+      sprintf(menu.newDisplayValue[3], FW_VERSION);
       break;
 
     case MENU_CHANGE_POSITION:
       for(i = 0; i < 4; i++){
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
-            sprintf(menu.asciiValue[i], "%ds", motor[i].actualPosition);
+            sprintf(menu.newDisplayValue[i], "%ds", motor[i].actualPosition);
             break;
 
           case MOTOR_STEP_UNIT_DEGREE:
             /* 0xDF is the display code for the degree-circle */
-            sprintf(menu.asciiValue[i], "%.3f%c", stepsToDegree(i, motor[i].actualPosition), 0xDF);
+            sprintf(menu.newDisplayValue[i], "%.1f%c", stepsToDegree(i, motor[i].actualPosition), 0xDF);
             break;
 
           case MOTOR_STEP_UNIT_RADIAN:
             /* 0xF7 is the display code for a greek pi */
-            sprintf(menu.asciiValue[i], "%.3f%c", stepsToRadian(i, motor[i].actualPosition), 0xF7);
+            sprintf(menu.newDisplayValue[i], "%.3f%c", stepsToRadian(i, motor[i].actualPosition), 0xF7);
             break;
 
           default:
@@ -1281,64 +1317,64 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_CHANGE_STEP_UNIT:
       for(i = 0; i < 4; i++){
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_STEP){
-          sprintf(menu.asciiValue[i], "%s", "step\0");
+          sprintf(menu.newDisplayValue[i], "%s", "step");
         }
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_DEGREE){
-          sprintf(menu.asciiValue[i], "%s", "degree\0");
+          sprintf(menu.newDisplayValue[i], "%s", "degree");
         }
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_RADIAN){
-          sprintf(menu.asciiValue[i], "%s", "radian\0");
+          sprintf(menu.newDisplayValue[i], "%s", "radian");
         }
       }
       break;
 
     case MENU_CHANGE_WAIT_TIME:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "%d ms", motor[i].waitBetweenSteps);
+        sprintf(menu.newDisplayValue[i], "%d ms", motor[i].waitBetweenSteps);
       }
       break;
 
     case MENU_SET_STEP_MULTIPL:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "%.1fx", motor[i].stepMultiplier);
+        sprintf(menu.newDisplayValue[i], "%.1fx", motor[i].stepMultiplier);
       }
       break;
 
     case MENU_RUN_ZERO_CALIBRATION:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "Zero M%d", i+1);
+        sprintf(menu.newDisplayValue[i], "M%d", i+1);
       }
       break;
 
     case MENU_CHANGE_GEAR_RATIO:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "%.2f", motor[i].gearRatio);
+        sprintf(menu.newDisplayValue[i], "%.2f", motor[i].gearRatio);
       }
       break;
 
     case MENU_CHANGE_SUBSTEPS:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "%.0f", motor[i].subSteps);
+        sprintf(menu.newDisplayValue[i], "%.0f", motor[i].subSteps);
       }
       break;
 
     case MENU_SAVE_CONFIG:
-      sprintf(menu.asciiValue[0], "Save all\0");
-      sprintf(menu.asciiValue[1], "\0");
-      sprintf(menu.asciiValue[2], "current\0");
-      sprintf(menu.asciiValue[3], "configs\0");
+      sprintf(menu.newDisplayValue[0], "Save all");
+      sprintf(menu.newDisplayValue[1], " ");
+      sprintf(menu.newDisplayValue[2], "current");
+      sprintf(menu.newDisplayValue[3], "configs");
       break;
 
     case MENU_LOAD_CONFIG:
-      sprintf(menu.asciiValue[0], "Load all\0");
-      sprintf(menu.asciiValue[1], "\0");
-      sprintf(menu.asciiValue[2], "saved\0");
-      sprintf(menu.asciiValue[3], "configs");
+      sprintf(menu.newDisplayValue[0], "Load all");
+      sprintf(menu.newDisplayValue[1], " ");
+      sprintf(menu.newDisplayValue[2], "saved");
+      sprintf(menu.newDisplayValue[3], "configs");
       break;
 
     case MENU_OPTICAL_ZERO_POS:
       for(i = 0; i < 4; i++){
-        sprintf(menu.asciiValue[i], "%ds", motor[i].opticalZeroPosition);
+        sprintf(menu.newDisplayValue[i], "%ds", motor[i].opticalZeroPosition);
       }
       break;
 
@@ -1351,31 +1387,14 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
   }
 
-  /* build up display string from the values */
-  /* first line */
-  sLen1 = strlen(menu.asciiValue[0]);
-  strcpy(displayBuffer, menu.asciiValue[0]);
-  sLen2 = strlen(menu.asciiValue[1]);
-  numSpaces = 16 - sLen1 - sLen2; /* calculate number of spaces between values */
-  for(i = 1; i <= numSpaces; i++){
-    strcat(displayBuffer, " ");
+  /* fill the new ascii values up with spaces */
+  for(i = 0; i < NUMBER_DISPLAY_VALUE_STRINGS; i++){
+    sLen = strlen(menu.newDisplayValue[i]);
+    for(j = sLen; j < DISPLAY_VALUE_STRING_LENGTH-1; j++){
+      menu.newDisplayValue[i][j] = ' ';
+    }
+    menu.newDisplayValue[i][DISPLAY_VALUE_STRING_LENGTH-1] = '\0';
   }
-  strcat(displayBuffer, menu.asciiValue[1]);
-  strcat(displayBuffer, "\n");    /* indicate line break */
-
-  /* second line */
-  sLen1 = strlen(menu.asciiValue[2]);
-  strcat(displayBuffer, menu.asciiValue[2]);
-  sLen2 = strlen(menu.asciiValue[3]);
-  numSpaces = 16 - sLen1 - sLen2;
-  for(i = 1; i <= numSpaces; i++){
-    strcat(displayBuffer, " ");
-  }
-  strcat(displayBuffer, menu.asciiValue[3]);
-  strcat(displayBuffer, "\0");
-
-  /* now put the lines to the display */
-  updateDisplay(displayBuffer);
 
   return;
 }
@@ -1389,7 +1408,7 @@ void updateMenu(void){
   int8_t menuPrompt;
   uint8_t menuState;
 
-  int16_t rotEncVal;
+  int8_t rotEncVal;
   uint8_t buttonVal;
 
   uint8_t state;
@@ -1404,8 +1423,8 @@ void updateMenu(void){
   }
 
   /* now get information about the actual display prompt */
-  menuPrompt = menu.actualDisplayedMenu;
-  menuState  = menu.menuMode;
+  menuPrompt = menu.currentDisplayedMenu;
+  menuState  = menu.currentMenuMode;
 
   /* check if we are in menu scrolling or in value changing mode */
   if(menuState == MENU_SCROLL_MODE){
@@ -1417,17 +1436,11 @@ void updateMenu(void){
       menuPrompt = NUMBER_OF_DISPLAY_MENUS - 1;
     }
 
-    /* change display menu item if necessary */
-    if(menuPrompt != menu.actualDisplayedMenu){
-      changeDisplayMenu(menuPrompt);
-      menu.actualDisplayedMenu = menuPrompt;
-    }
+    menu.newDisplayedMenu = (uint8_t)menuPrompt;
 
     /* or enter the MENU_CHANGE_MODE */
-    buttonVal = getButtonEvent();
-    if(buttonVal == BUTTON_ROT_ENC){
-      updateDisplayChangeValues(menuPrompt);
-      menu.menuMode = MENU_CHANGE_MODE;
+    if(getButtonEvent() == BUTTON_ROT_ENC){
+      menu.newMenuMode = MENU_CHANGE_MODE;
     }
   }
 
@@ -1439,31 +1452,31 @@ void updateMenu(void){
         asm("nop");
         break;
 
-      case BUTTON_MOTOR1:
+      case BUTTON_MOTOR0:
         menu.selectedMotor = MOTOR0;
-        menu.menuMode = MENU_VALUE_CHANGE;
+        menu.newMenuMode = MENU_VALUE_CHANGE;
+        break;
+
+      case BUTTON_MOTOR1:
+        menu.selectedMotor = MOTOR1;
+        menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MOTOR2:
-        menu.selectedMotor = MOTOR1;
-        menu.menuMode = MENU_VALUE_CHANGE;
+        menu.selectedMotor = MOTOR2;
+        menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MOTOR3:
-        menu.selectedMotor = MOTOR2;
-        menu.menuMode = MENU_VALUE_CHANGE;
-        break;
-
-      case BUTTON_MOTOR4:
         menu.selectedMotor = MOTOR3;
-        menu.menuMode = MENU_VALUE_CHANGE;
+        menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MENUESCAPE:
         /* or get back to the MENU_SCROLL_MODE */
         menu.selectedMotor = NO_MOTOR;
-        menu.menuMode = MENU_SCROLL_MODE;
-        changeDisplayMenu(menu.actualDisplayedMenu);
+        menu.newMenuMode = MENU_SCROLL_MODE;
+        menu.currentDisplayedMenu = 42;
         break;
 
       default:
@@ -1474,15 +1487,13 @@ void updateMenu(void){
 
   if(menuState == MENU_VALUE_CHANGE){
     /* here we have a motor selected and want to change any of its values */
-    rotEncVal = (int8_t)getRotaryEncoderEvent();
-    buttonVal = getButtonEvent();
+    rotEncVal = getRotaryEncoderEvent();
     if((rotEncVal != 0) && (menu.selectedMotor != NO_MOTOR)){
-      menuPtr = (menuItem*)pgm_read_word(&menuList[menu.actualDisplayedMenu]);
+      menuPtr = (menuItem*)pgm_read_word(&menuList[menu.currentDisplayedMenu]);
       state = (uint8_t)pgm_read_byte(&menuPtr->state);
 
       switch(state){
         case MENU_MAIN:   /* main menu point, no values here to change */
-          asm("nop");
           break;
 
         case MENU_CHANGE_POSITION:   /* change motor position */
@@ -1578,11 +1589,9 @@ void updateMenu(void){
           asm("nop");
           break;
       }
-      updateDisplayChangeValues(menu.actualDisplayedMenu);
     }
   }
 
-  /* all events have been handled. now reset the .readyToProcess's */
   buttonState.readyToProcess = 0;
   rotEnc.readyToProcess = 0;
 
@@ -1633,7 +1642,10 @@ uint8_t getButtonEvent(void){
     /* a button has been pressed */
     state = buttonState.inputRegister^0xFF;   /* invert state register */
 
-    if(state & (1<<BUTTON_MOTOR1)){
+    if(state & (1<<BUTTON_MOTOR0)){
+      button = BUTTON_MOTOR0;
+    }
+    else if(state & (1<<BUTTON_MOTOR1)){
       button = BUTTON_MOTOR1;
     }
     else if(state & (1<<BUTTON_MOTOR2)){
@@ -1641,9 +1653,6 @@ uint8_t getButtonEvent(void){
     }
     else if(state & (1<<BUTTON_MOTOR3)){
       button = BUTTON_MOTOR3;
-    }
-    else if(state & (1<<BUTTON_MOTOR4)){
-      button = BUTTON_MOTOR4;
     }
     else if(state & (1<<BUTTON_MENUESCAPE)){
       button = BUTTON_MENUESCAPE;
@@ -1663,14 +1672,14 @@ uint8_t getButtonEvent(void){
 /* ---------------------------------------------------------------------
    process a rotary encoder event (rotation only)
  --------------------------------------------------------------------- */
-int16_t getRotaryEncoderEvent(void){
+int8_t getRotaryEncoderEvent(void){
 
   /*
    * returns the turned steps of the rotary encoder since
    * since last look-up here
    */
 
-  int16_t steps = 0;
+  int8_t steps = 0;
 
   if(rotEnc.readyToProcess){
     cli();
@@ -1765,7 +1774,6 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
   return;
 }
 
-
 /* ---------------------------------------------------------------------
     moves the motor relative to the actual position
  --------------------------------------------------------------------- */
@@ -1818,7 +1826,6 @@ void commandEnable(char* param0, char* param1){
   return;
 }
 
-
 /* ---------------------------------------------------------------------
     returns the actual motor position as string
     the format depends on the given unit
@@ -1858,7 +1865,7 @@ char* commandIsMoving(char* param0){
 
   uint8_t i = 0;
 
-  i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i > MAX_MOTOR){
     sprintf(txString.buffer, "unknown motor\0");
@@ -1875,7 +1882,6 @@ char* commandIsMoving(char* param0){
   return txString.buffer;
 }
 
-
 /* ---------------------------------------------------------------------
     returns a measured analog value
  --------------------------------------------------------------------- */
@@ -1884,7 +1890,7 @@ char* commandGetAnalog(char* param0){
   uint8_t i = 0;
   uint16_t val = 0;
 
-  i = (uint8_t)strtol(commandParam[0], (char **)NULL, 10);
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if((i < MOTOR_SENS0) || (i > MOTOR_SENS_MAX)){
     sprintf(txString.buffer, "-1\0"); /* indicates an error */
@@ -1896,6 +1902,226 @@ char* commandGetAnalog(char* param0){
 
   return txString.buffer;
 }
+
+/* ---------------------------------------------------------------------
+    returns the optical zero position
+ --------------------------------------------------------------------- */
+char* commandGetOptZeroPos(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+  }
+  else{
+    sprintf(txString.buffer, "%d steps\0", motor[i].opticalZeroPosition);
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the optical zero position
+    as offset from magnetic zero position
+ --------------------------------------------------------------------- */
+void commandSetOptZeroPos(char* param0, char* param1){
+
+  uint8_t i = 0;
+  int16_t val = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = (int16_t)strtol(param1, (char **)NULL, 10);
+    motor[i].opticalZeroPosition = val;
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    returns the mechanical gear ratio
+ --------------------------------------------------------------------- */
+char* commandGetGearRatio(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+  }
+  else{
+    sprintf(txString.buffer, "%f\0", motor[i].gearRatio);
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the mechanical gear ratio
+ --------------------------------------------------------------------- */
+void commandSetGearRatio(char* param0, char* param1){
+
+  uint8_t i = 0;
+  float val = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = atof(param1);
+    motor[i].opticalZeroPosition = val;
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    returns the steps per full rotation w/o substeps
+ --------------------------------------------------------------------- */
+char* commandGetFullRotation(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+  }
+  else{
+    sprintf(txString.buffer, "%.0f\0", motor[i].stepsPerFullRotation);
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the steps per full rotation w/o substeps
+ --------------------------------------------------------------------- */
+void commandSetFullRotation(char* param0, char* param1){
+
+  uint8_t i = 0;
+  float val = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = atof(param1);
+    motor[i].stepsPerFullRotation = val;
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    returns the adjusted substeps
+ --------------------------------------------------------------------- */
+char* commandGetSubSteps(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+  }
+  else{
+    sprintf(txString.buffer, "%.0f\0", motor[i].subSteps);
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    returns a measured analog value
+ --------------------------------------------------------------------- */
+void commandSetSubSteps(char* param0, char* param1){
+
+  uint8_t i = 0;
+  float val = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = atof(param1);
+    motor[i].subSteps = val;
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    returns the wait time between two single steps
+ --------------------------------------------------------------------- */
+char* commandGetWaitTime(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+  }
+  else{
+    sprintf(txString.buffer, "%d\0", motor[i].waitBetweenSteps);
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the wait time between two single steps
+ --------------------------------------------------------------------- */
+void commandSetWaitTime(char* param0, char* param1){
+
+  uint8_t i = 0;
+  uint16_t val = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor\0");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = atof(param1);
+    motor[i].waitBetweenSteps = val;
+  }
+
+  return;
+}
+
+
+
+
+
+
+
+
+
 
 /* =====================================================================
     interrupt routines
@@ -2049,17 +2275,29 @@ ISR(TIMER2_COMPA_vect){
   /* TODO: correct step error */
 
   PORTC |= outputDir;     /* set direction */
-  _delay_us(1.0);         /* sync */
+  _delay_us(5.0);         /* sync */
   PORTC |= outputStep;    /* make exactly one step steps */
   _delay_us(2.0);         /* sync */
   PORTC = 0;
-  //PORTC &= ~outputStep;
 
   /* update motor positions */
   for(i = 0; i < 4; i++){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
+        /* check if we got one full rotation */
+        if((float)(motor[i].actualPosition) + 1.0 > (motor[i].gearRatio*
+                                                     motor[i].stepsPerFullRotation*
+                                                     motor[i].subSteps)){
+          /* correct resulting step error ??? */
+          motor[i].stepError -= (float)(motor[i].actualPosition) + 1.0
+                                - (motor[i].gearRatio*
+                                   motor[i].stepsPerFullRotation*
+                                   motor[i].subSteps);
+          /* and reset motor position */
+          motor[i].actualPosition = 0;
+        }
         motor[i].actualPosition++;
+
       }
       else if(stepDiff[i] < 0){
         motor[i].actualPosition--;
@@ -2084,6 +2322,29 @@ int main(void){
     commandParam[i] = (char*)malloc(PARAMETER_LENGTH * sizeof(char));
     for(j = 0; j < PARAMETER_LENGTH; j++){
       commandParam[i][j] = 0;
+    }
+  }
+
+  /* initialize menu strings */
+  menu.currentDisplayValue = (char**)malloc(NUMBER_DISPLAY_VALUE_STRINGS * sizeof(char*));
+  menu.newDisplayValue     = (char**)malloc(NUMBER_DISPLAY_VALUE_STRINGS * sizeof(char*));
+  for(i = 0; i < NUMBER_DISPLAY_VALUE_STRINGS; i++){
+    menu.currentDisplayValue[i] = (char*)malloc(DISPLAY_VALUE_STRING_LENGTH * sizeof(char));
+    menu.newDisplayValue[i]     = (char*)malloc(DISPLAY_VALUE_STRING_LENGTH * sizeof(char));
+    for(j = 0; j < DISPLAY_VALUE_STRING_LENGTH; j++){
+      menu.currentDisplayValue[i][j] = 0;
+      menu.newDisplayValue[i][j]     = 0;
+    }
+  }
+
+  menu.currentMenuText     = (char**)malloc(NUMBER_DISPLAY_MENU_STRINGS * sizeof(char*));
+  menu.newMenuText         = (char**)malloc(NUMBER_DISPLAY_MENU_STRINGS * sizeof(char*));
+  for(i = 0; i < NUMBER_DISPLAY_MENU_STRINGS; i++){
+    menu.currentMenuText[i] = (char*)malloc(DISPLAY_MENU_STRING_LENGTH * sizeof(char));
+    menu.newMenuText[i]     = (char*)malloc(DISPLAY_MENU_STRING_LENGTH * sizeof(char));
+    for(j = 0; j < DISPLAY_MENU_STRING_LENGTH; j++){
+      menu.currentMenuText[i][j] = 0;
+      menu.newMenuText[i][j]     = 0;
     }
   }
 
@@ -2112,16 +2373,16 @@ RESET:
   setMotorState(MOTOR2, ON);
   setMotorState(MOTOR3, OFF);
 
-  /* set up initial display contents */
-  changeDisplayMenu(MENU_MAIN);
-
   sei();
 
   /* start the never ending story */
   for(;;){
 
-    /* check for manual changes */
+    /* check for manual done changes */
     updateMenu();
+
+    /* check for changed values and update them on the display */
+    updateDisplay();
 
     /* check for new received command */
     commandCode = parseCommand();
@@ -2151,12 +2412,10 @@ RESET:
 
       case 0x84:    /* MOVEABS */
         commandMoveAbs(commandParam[0], commandParam[1], commandParam[2]);
-        updateDisplayChangeValues(menu.actualDisplayedMenu);
         break;
 
       case 0x85:    /* MOVEREL */
         commandMoveRel(commandParam[0], commandParam[1], commandParam[2]);
-        updateDisplayChangeValues(menu.actualDisplayedMenu);
         break;
 
       case 0x86:    /* ZERORUN */
@@ -2185,6 +2444,49 @@ RESET:
 
       case 0x8C:    /* GETANALOG */
         sendText(commandGetAnalog(commandParam[0]));
+        break;
+
+      case 0x8D:    /* GETOPTZEROPOS */
+        sendText(commandGetOptZeroPos(commandParam[0]));
+        break;
+
+      case 0x8E:    /* SETOPTZEROPOS */
+        commandSetOptZeroPos(commandParam[0], commandParam[1]);
+        break;
+
+      case 0x8F:    /* GETGEARRATIO */
+        sendText(commandGetGearRatio(commandParam[0]));
+        break;
+
+      case 0x90:    /* SETGEARRATIO */
+        commandSetGearRatio(commandParam[0], commandParam[1]);
+        break;
+
+      case 0x91:    /* GETFULLROT */
+        sendText(commandGetFullRotation(commandParam[0]));
+        break;
+
+      case 0x92:    /* SETFULLROT */
+        commandSetFullRotation(commandParam[0], commandParam[1]);
+        break;
+
+      case 0x93:    /* GETSUBSTEPS */
+        sendText(commandGetSubSteps(commandParam[0]));
+        break;
+
+      case 0x94:    /* SETSUBSTEPS */
+        commandSetSubSteps(commandParam[0], commandParam[1]);
+        break;
+
+      case 0x95:    /* GETWAITTIME */
+        sendText(commandGetWaitTime(commandParam[0]));
+        break;
+
+      case 0x96:    /* SETWAITTIME */
+        commandSetWaitTime(commandParam[0], commandParam[1]);
+        break;
+
+      case 0x97:    /* SETCONSTSPEED */
         break;
 
       default:
