@@ -707,6 +707,9 @@ void motorZeroRun(uint8_t i){
   uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
 
+  /* stop any motor movements (stop timer/counter2) */
+  TCCR2B &= ~ 0x07;
+
   keepWaitTime = motor[i].waitBetweenSteps;
 
   stepsPerRound = motor[i].stepsPerFullRotation
@@ -777,6 +780,9 @@ void motorZeroRun(uint8_t i){
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
   motor[i].waitBetweenSteps = keepWaitTime;
+
+  /* now allow motor movements again */
+  initMotorDelayTimer();
 
   return;
 }
@@ -2243,6 +2249,12 @@ ISR(TIMER2_COMPA_vect){
   uint8_t outputDir  = 0;
   uint8_t outputStep = 0;
 
+  float stepsPerFullRotation = 0.0;
+
+  stepsPerFullRotation =  motor[i].gearRatio
+                         *motor[i].stepsPerFullRotation
+                         *motor[i].subSteps;
+
   for(i = 0; i < 4; i++){
     stepDiff[i] = motor[i].desiredPosition - motor[i].actualPosition;
 
@@ -2285,21 +2297,22 @@ ISR(TIMER2_COMPA_vect){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
         /* check if we got one full rotation */
-        if((float)(motor[i].actualPosition) + 1.0 > (motor[i].gearRatio*
-                                                     motor[i].stepsPerFullRotation*
-                                                     motor[i].subSteps)){
-          /* correct resulting step error ??? */
-          motor[i].stepError -= (float)(motor[i].actualPosition) + 1.0
-                                - (motor[i].gearRatio*
-                                   motor[i].stepsPerFullRotation*
-                                   motor[i].subSteps);
-          /* and reset motor position */
+        if(((float)(motor[i].actualPosition) + 1.0) > stepsPerFullRotation){
+          /* so set back to 0 */
           motor[i].actualPosition = 0;
+          /* correct desired motor position */
+          motor[i].desiredPosition -= (int16_t)round(stepsPerFullRotation);
         }
         motor[i].actualPosition++;
-
       }
       else if(stepDiff[i] < 0){
+      /* check if we got one full rotation */
+      if(((float)(motor[i].actualPosition) - 1.0) < 0.0){
+        /* so set back to max steps per round */
+        motor[i].actualPosition = (int16_t)round(stepsPerFullRotation);
+        /* correct desired motor position */
+        motor[i].desiredPosition += (int16_t)round(stepsPerFullRotation);
+      }
         motor[i].actualPosition--;
       }
       motor[i].isMoving = 0;
