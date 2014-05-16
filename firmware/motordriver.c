@@ -1305,7 +1305,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_POSITION:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
             sprintf(menu.newDisplayValue[i], "%ds", motor[i].actualPosition);
@@ -1328,7 +1328,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_STEP_UNIT:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_STEP){
           sprintf(menu.newDisplayValue[i], "%s", "step");
         }
@@ -1342,31 +1342,31 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_WAIT_TIME:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%d ms", motor[i].waitBetweenSteps);
       }
       break;
 
     case MENU_SET_STEP_MULTIPL:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.1fx", motor[i].stepMultiplier);
       }
       break;
 
     case MENU_RUN_ZERO_CALIBRATION:
-      for(i = 0; i < 4; i++){
-        sprintf(menu.newDisplayValue[i], "M%d", i+1);
+      for(i = 0; i < MAX_MOTOR; i++){
+        sprintf(menu.newDisplayValue[i], "Zero M%d", i);
       }
       break;
 
     case MENU_CHANGE_GEAR_RATIO:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.2f", motor[i].gearRatio);
       }
       break;
 
     case MENU_CHANGE_SUBSTEPS:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.0f", motor[i].subSteps);
       }
       break;
@@ -1386,7 +1386,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_OPTICAL_ZERO_POS:
-      for(i = 0; i < 4; i++){
+      for(i = 0; i < MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%ds", motor[i].opticalZeroPosition);
       }
       break;
