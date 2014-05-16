@@ -150,7 +150,6 @@ typedef struct{
 typedef struct{
 
   uint16_t ADCvalue;
-  uint8_t  conversionCount;
   uint8_t  numberOfMeasurements;
 
 }analog;
@@ -247,8 +246,9 @@ ADD_COMMAND(20, "SETSUBSTEPS\0",    2, 0x94)  /* sets the substeps for a motor *
 ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between two singele steps */
 ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two single steps  */
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
+ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
 
-#define TOTAL_NUMBER_OF_COMMANDS 24
+#define TOTAL_NUMBER_OF_COMMANDS 25
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -257,7 +257,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_12_, &cmd_13_, &cmd_14_,
                                               &cmd_15_, &cmd_16_, &cmd_17_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
-                                              &cmd_21_, &cmd_22_, &cmd_23_
+                                              &cmd_21_, &cmd_22_, &cmd_23_,
+                                              &cmd_24_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -463,7 +464,6 @@ void initDataStructs(void){
   status.inRemoteMode = 0;
 
   adc.ADCvalue = 0;
-  adc.conversionCount = 0;
   adc.numberOfMeasurements = 8;
 
   menu.newDisplayedMenu = MENU_MAIN;
@@ -574,6 +574,9 @@ void prepareReset(){
 
   /* stop polling timer for manual operating system */
   TCCR0B = 0;
+
+  /* stop motor movement timer */
+  TCCR2B = 0;
 
   return;
 }
@@ -808,7 +811,6 @@ uint16_t getADCvalue(uint8_t sensPin){
 
   /* reset all values and counters before starting new conversion */
   adc.ADCvalue = 0;
-  adc.conversionCount = adc.numberOfMeasurements - 1;
 
   /* start the conversion */
   for(i = 0; i < adc.numberOfMeasurements; i++){
@@ -833,7 +835,7 @@ void saveConfigToEEPROM(void){
 
   cli();
 
-  for(i = 0; i < 4; i++){
+  for(i = 0; i < MAX_MOTOR; i++){
     eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
     eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
@@ -857,7 +859,7 @@ void loadConfigFromEEPROM(void){
 
   cli();
 
-  for(i = 0; i < 4; i++){
+  for(i = 0; i < MAX_MOTOR; i++){
     eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
     eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
@@ -1904,7 +1906,7 @@ char* commandGetAnalog(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if((i < MOTOR_SENS0) || (i > MOTOR_SENS_MAX)){
-    sprintf(txString.buffer, "-1\0"); /* indicates an error */
+    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
   }
   else{
     val = getADCvalue(i);
@@ -2186,7 +2188,20 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
   return;
 }
 
+/* ---------------------------------------------------------------------
+    sets the whole system back to factory reset
+ --------------------------------------------------------------------- */
+void commandFactoryReset(void){
 
+  cli();
+
+  initDataStructs();
+  saveConfigToEEPROM();
+
+  sei();
+
+  return;
+}
 
 
 
@@ -2452,9 +2467,11 @@ RESET:
 
   /* turn on all motors */
   setMotorState(MOTOR0, ON);
-  setMotorState(MOTOR1, OFF);
+  setMotorState(MOTOR1, ON);
   setMotorState(MOTOR2, ON);
-  setMotorState(MOTOR3, OFF);
+  setMotorState(MOTOR3, ON);
+
+  loadConfigFromEEPROM();
 
   sei();
 
@@ -2571,6 +2588,13 @@ RESET:
 
       case 0x97:    /* SETCONSTSPEED */
         commandSetConstSpeed(commandParam[0], commandParam[1], commandParam[2]);
+        break;
+
+      case 0x98:    /* FACTORYRESET */
+        commandFactoryReset();
+        cli();
+        prepareReset();
+        goto RESET;
         break;
 
       default:
