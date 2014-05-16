@@ -80,10 +80,10 @@
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
-#define BUTTON_MOTOR0       PB4
-#define BUTTON_MOTOR1       PB5
-#define BUTTON_MOTOR2       PB6
-#define BUTTON_MOTOR3       PB7
+#define BUTTON_MOTOR0       PB7
+#define BUTTON_MOTOR1       PB6
+#define BUTTON_MOTOR2       PB5
+#define BUTTON_MOTOR3       PB4
 #define BUTTON_MENUESCAPE   PB3
 #define BUTTON_ROT_ENC      PB0
 
@@ -2369,7 +2369,7 @@ ISR(TIMER2_COMPA_vect){
   _delay_us(5.0);         /* sync */
   PORTC |= outputStep;    /* make exactly one step steps */
   _delay_us(2.0);         /* sync */
-  PORTC = 0;
+  PORTC &= ~(outputStep);
 
   /* update motor positions */
   for(i = 0; i <= MAX_MOTOR; i++){
