@@ -26,14 +26,13 @@ Erklaerung:
 = Rel1 / Rel2 (je nach 'rel'-program, z.B. M2 = 2*M1, doppelt schnell)
 = P1/P2 (gespeicherte Positionen anfahren, abs. oder relativ)
 
+
+NOTE SL: fastmode gibts entweder mit anderer step unit oder dem step multiplier
 - Fastmode fuer den Motor erlauben (z.B. mit Druecken oder Beschleunigung)
 
-- einen Modus einbauen, in dem der Motor IMMER dreht, z.B. bis man eine
-Taste drueckt (z.B. zum Einstellen, ob was wabert/ wackelt, CCW & CW)
 
 zum Befehlssatz (was noch so gut waere):
 
-- alle Werte auslesen koennen (factor? scaling? status?, etc.)
 - setzero (sagt 'dies ist jetzt die Nullposition', e.g. fuer Waveplate
 vs. Magnet)
 - setposzero XX YY (sagt Motor XX, dass die Nullposition bei YY ist)
@@ -49,5 +48,7 @@ wieder auf Anfang.
 - stopall (stopt einfach alles, e.g. Emergency)
 - nogo XX yy zz (ermoeglicht einen gewissen Bereich zu verbieten, z.B.
 weil dann die Power zu hoch wird)
+
+NOTE SL: nein, es wird eine bedienungsanleitung für die befehle geben, daher kein echo.
 - echo (gibt die Befehle auf dem Display aus)
 

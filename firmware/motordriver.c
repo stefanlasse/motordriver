@@ -831,8 +831,6 @@ void saveConfigToEEPROM(void){
 
   uint8_t i = 0;
 
-  /* TODO: check if any motor is moving */
-
   cli();
 
   for(i = 0; i < 4; i++){
