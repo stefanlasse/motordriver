@@ -434,7 +434,7 @@ void initDataStructs(void){
 
   uint8_t i, j;
 
-  for(i = 0; i < MAX_MOTOR; i++){
+  for(i = 0; i <= MAX_MOTOR; i++){
     motor[i].actualPosition       = 0;
     motor[i].desiredPosition      = 0;
     motor[i].opticalZeroPosition  = 0;
@@ -835,7 +835,7 @@ void saveConfigToEEPROM(void){
 
   cli();
 
-  for(i = 0; i < MAX_MOTOR; i++){
+  for(i = 0; i <= MAX_MOTOR; i++){
     eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
     eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
@@ -859,7 +859,7 @@ void loadConfigFromEEPROM(void){
 
   cli();
 
-  for(i = 0; i < MAX_MOTOR; i++){
+  for(i = 0; i <= MAX_MOTOR; i++){
     eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
     eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
     eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
@@ -1305,7 +1305,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_POSITION:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
             sprintf(menu.newDisplayValue[i], "%ds", motor[i].actualPosition);
@@ -1328,7 +1328,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_STEP_UNIT:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_STEP){
           sprintf(menu.newDisplayValue[i], "%s", "step");
         }
@@ -1342,31 +1342,31 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CHANGE_WAIT_TIME:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%d ms", motor[i].waitBetweenSteps);
       }
       break;
 
     case MENU_SET_STEP_MULTIPL:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.1fx", motor[i].stepMultiplier);
       }
       break;
 
     case MENU_RUN_ZERO_CALIBRATION:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "Zero M%d", i);
       }
       break;
 
     case MENU_CHANGE_GEAR_RATIO:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.2f", motor[i].gearRatio);
       }
       break;
 
     case MENU_CHANGE_SUBSTEPS:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%.0f", motor[i].subSteps);
       }
       break;
@@ -1386,7 +1386,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_OPTICAL_ZERO_POS:
-      for(i = 0; i < MAX_MOTOR; i++){
+      for(i = 0; i <= MAX_MOTOR; i++){
         sprintf(menu.newDisplayValue[i], "%ds", motor[i].opticalZeroPosition);
       }
       break;
@@ -2334,7 +2334,7 @@ ISR(TIMER2_COMPA_vect){
                          *motor[i].stepsPerFullRotation
                          *motor[i].subSteps;
 
-  for(i = 0; i < MAX_MOTOR; i++){
+  for(i = 0; i <= MAX_MOTOR; i++){
     stepDiff[i] = motor[i].desiredPosition - motor[i].actualPosition;
 
     if(stepDiff[i] == 0){
@@ -2372,7 +2372,7 @@ ISR(TIMER2_COMPA_vect){
   PORTC = 0;
 
   /* update motor positions */
-  for(i = 0; i < MAX_MOTOR; i++){
+  for(i = 0; i <= MAX_MOTOR; i++){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
         /* check if we got one full rotation */
@@ -2466,10 +2466,9 @@ RESET:
   initManualOperatingButtons();
 
   /* turn on all motors */
-  setMotorState(MOTOR0, ON);
-  setMotorState(MOTOR1, ON);
-  setMotorState(MOTOR2, ON);
-  setMotorState(MOTOR3, ON);
+  for(i = 0; i <= MAX_MOTOR; i++){
+    setMotorState(MOTOR0 + i, ON);
+  }
 
   loadConfigFromEEPROM();
 
