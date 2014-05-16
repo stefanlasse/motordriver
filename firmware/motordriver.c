@@ -370,7 +370,7 @@ typedef struct{
 /* static firmware version */
 static const char firmwareVersion[] = FW_VERSION;
 
-volatile motorInfo motor[4];            /* we got 4 motors [0..3] */
+volatile motorInfo motor[MAX_MOTOR+1];  /* we got 4 motors [0..3] */
 volatile serialString rxString;         /* for a received command */
 volatile serialString txString;         /* for information to send */
 volatile statusVariables status;        /* status variables */
@@ -388,13 +388,13 @@ volatile rotaryEncoder rotEnc;
 char EEMEM IDNtext[IDN_STRING_LENGTH + 1];
 
 /* keep motor information in EEPROM */
-int16_t  EEMEM opticalZeroPositionEE[4];
-float    EEMEM gearRatioEE[4];
-float    EEMEM stepsPerFullRotationEE[4];
-float    EEMEM subStepsEE[4];
-float    EEMEM stepMultiplierEE[4];
-uint8_t  EEMEM stepUnitEE[4];
-uint16_t EEMEM waitBetweenStepsEE[4];
+int16_t  EEMEM opticalZeroPositionEE[MAX_MOTOR+1];
+float    EEMEM gearRatioEE[MAX_MOTOR+1];
+float    EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
+float    EEMEM subStepsEE[MAX_MOTOR+1];
+float    EEMEM stepMultiplierEE[MAX_MOTOR+1];
+uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
+uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 
 
 /* ---------------------------------------------------------------------
@@ -434,7 +434,7 @@ void initDataStructs(void){
 
   uint8_t i, j;
 
-  for(i = 0; i <= 3; i++){
+  for(i = 0; i < MAX_MOTOR; i++){
     motor[i].actualPosition       = 0;
     motor[i].desiredPosition      = 0;
     motor[i].opticalZeroPosition  = 0;
@@ -2334,7 +2334,7 @@ ISR(TIMER2_COMPA_vect){
                          *motor[i].stepsPerFullRotation
                          *motor[i].subSteps;
 
-  for(i = 0; i < 4; i++){
+  for(i = 0; i < MAX_MOTOR; i++){
     stepDiff[i] = motor[i].desiredPosition - motor[i].actualPosition;
 
     if(stepDiff[i] == 0){
@@ -2372,7 +2372,7 @@ ISR(TIMER2_COMPA_vect){
   PORTC = 0;
 
   /* update motor positions */
-  for(i = 0; i < 4; i++){
+  for(i = 0; i < MAX_MOTOR; i++){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
         /* check if we got one full rotation */
