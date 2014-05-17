@@ -672,6 +672,7 @@ void initMotorDelayTimer(void){
 /* ---------------------------------------------------------------------
     moveMotorBySteps: move motor <steps> steps forward or backward
     This is a relative movement to the actual position.
+    NOTE: this function is only used by motorZeroRun()
  --------------------------------------------------------------------- */
 void moveMotorRelative(uint8_t mot, int16_t steps){
 
@@ -691,19 +692,6 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
   else{
     /* move CW */
     PORTC &= ~(1 << (2*mot + 1));
-  }
-
-  /* correct error from degree calculus */
-  /* TODO: maybe mind moving direction for the error */
-  while(fabs(motor[mot].stepError) >= 1.0f){
-    movSteps += 1;
-
-    if(motor[mot].stepError > 0.0f){
-      motor[mot].stepError -= 1.0f;
-    }
-    if(motor[mot].stepError < 0.0f){
-      motor[mot].stepError += 1.0f;
-    }
   }
 
   /* now move the motor */
@@ -919,8 +907,8 @@ void loadConfigFromEEPROM(void){
 /* ---------------------------------------------------------------------
    produce enable pulse
  --------------------------------------------------------------------- */
-static void lcd_enable( void )
-{
+static void lcd_enable(void){
+
   LCD_PORT |= (1<<LCD_EN);     /* set ENABLE to 1 */
   _delay_us(LCD_ENABLE_US);
   LCD_PORT &= ~(1<<LCD_EN);    /* set ENABLE to 0 */
@@ -931,8 +919,8 @@ static void lcd_enable( void )
 /* ---------------------------------------------------------------------
    send 4 bit to LCD
  --------------------------------------------------------------------- */
-static void lcd_out( uint8_t data )
-{
+static void lcd_out(uint8_t data){
+
   data &= 0xF0;                       /* mask upper 4 bits */
 
   LCD_PORT &= ~(0xF0>>(4-LCD_DB));    /* delete mask */
@@ -945,8 +933,8 @@ static void lcd_out( uint8_t data )
 /* ---------------------------------------------------------------------
    initializes the display
  --------------------------------------------------------------------- */
-void lcd_init(void)
-{
+void lcd_init(void){
+
   /* set uses data-lines to output */
   uint8_t pins = (0x0F << LCD_DB) |
                  (1<<LCD_RS) |
@@ -998,8 +986,8 @@ void lcd_init(void)
 /* ---------------------------------------------------------------------
    send a byte to the display
  --------------------------------------------------------------------- */
-void lcd_data(uint8_t data)
-{
+void lcd_data(uint8_t data){
+
   LCD_PORT |= (1<<LCD_RS);    /* set reset to 1 */
 
   lcd_out(data);            /* send upper nibble */
@@ -1013,8 +1001,8 @@ void lcd_data(uint8_t data)
 /* ---------------------------------------------------------------------
    send a command to the display
  --------------------------------------------------------------------- */
-void lcd_command(uint8_t data)
-{
+void lcd_command(uint8_t data){
+
   LCD_PORT &= ~(1<<LCD_RS);    /* set reset to 0 */
 
   lcd_out( data );             /* send upper nibble */
@@ -1028,8 +1016,8 @@ void lcd_command(uint8_t data)
 /* ---------------------------------------------------------------------
    send command to clear all display contents
  --------------------------------------------------------------------- */
-void lcd_clear(void)
-{
+void lcd_clear(void){
+
   lcd_command( LCD_CLEAR_DISPLAY );
   _delay_ms( LCD_CLEAR_DISPLAY_MS );
 
@@ -1039,8 +1027,8 @@ void lcd_clear(void)
 /* ---------------------------------------------------------------------
    set the cursor to home position
  --------------------------------------------------------------------- */
-void lcd_home(void)
-{
+void lcd_home(void){
+
   lcd_command( LCD_CURSOR_HOME );
   _delay_ms( LCD_CURSOR_HOME_MS );
 
@@ -1050,8 +1038,8 @@ void lcd_home(void)
 /* ---------------------------------------------------------------------
    set cursor to specific position (x=col, y=row)
  --------------------------------------------------------------------- */
-void lcd_setcursor(uint8_t x, uint8_t y)
-{
+void lcd_setcursor(uint8_t x, uint8_t y){
+
   uint8_t data;
 
   switch (y)
@@ -1084,8 +1072,8 @@ void lcd_setcursor(uint8_t x, uint8_t y)
 /* ---------------------------------------------------------------------
    send a string to the display
  --------------------------------------------------------------------- */
-void lcd_string(const char *data)
-{
+void lcd_string(const char *data){
+
   while(*data != '\0'){
     lcd_data(*data++);
   }
@@ -1096,8 +1084,8 @@ void lcd_string(const char *data)
 /* ---------------------------------------------------------------------
    generate a user defined character into LCD's ROM
  --------------------------------------------------------------------- */
-void lcd_generatechar(uint8_t code, const uint8_t *data)
-{
+void lcd_generatechar(uint8_t code, const uint8_t *data){
+
   uint8_t i = 0;
   /* set start position of character */
   lcd_command(LCD_SET_CGADR | (code<<3));
@@ -2177,13 +2165,11 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     if(strcmp(param1, "CW")  == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
       motor[i].waitBetweenSteps = waitTime;
-      //motor[i].actualPosition  = 0;
       motor[i].desiredPosition += 1;
     }
     if(strcmp(param1, "CCW") == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
       motor[i].waitBetweenSteps = waitTime;
-      //motor[i].actualPosition  = 0;
       motor[i].desiredPosition += -1;
     }
   }
