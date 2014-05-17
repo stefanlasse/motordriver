@@ -1489,6 +1489,7 @@ void updateMenu(void){
         break;
     }
   }
+  /* test */
 
   if(menuState == MENU_VALUE_CHANGE){
     /* here we have a motor selected and want to change any of its values */
