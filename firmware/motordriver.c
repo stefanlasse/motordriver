@@ -80,10 +80,10 @@
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
-#define BUTTON_MOTOR0       PB7
-#define BUTTON_MOTOR1       PB6
-#define BUTTON_MOTOR2       PB5
-#define BUTTON_MOTOR3       PB4
+#define BUTTON_MOTOR0       PB4
+#define BUTTON_MOTOR1       PB5
+#define BUTTON_MOTOR2       PB6
+#define BUTTON_MOTOR3       PB7
 #define BUTTON_MENUESCAPE   PB3
 #define BUTTON_ROT_ENC      PB0
 
@@ -400,11 +400,11 @@ uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 /* ---------------------------------------------------------------------
     function prototypes
  --------------------------------------------------------------------- */
-
 /* initializer */
 void initDataStructs(void);
 void initUSART(void);
-void initDisplay(void);
+void initADC(void);
+void initMotorDelayTimer(void);
 
 /* functionality */
 void sendChar(char c);
@@ -412,15 +412,56 @@ void sendText(char *c);
 void prepareReset();
 void setMotorState(uint8_t motor, uint8_t status);
 void moveMotorRelative(uint8_t mot, int16_t steps);
-void moveMotorAbsolute(uint8_t mot, float val);
-void motorZeroRun(uint8_t motor);
+void defineOpticalZeroPosition(uint8_t i, int8_t step);
+void motorZeroRun(uint8_t i);
 uint16_t getADCvalue(uint8_t sensPin);
+void saveConfigToEEPROM(void);
+void loadConfigFromEEPROM(void);
 
-int8_t getRotaryEncoderEvent(void);
+void lcd_init(void);
+static void lcd_enable(void);
+static void lcd_out(uint8_t data);
+void lcd_data(uint8_t data);
+void lcd_command(uint8_t data);
+void lcd_clear(void);
+void lcd_home(void);
+void lcd_setcursor(uint8_t x, uint8_t y);
+void lcd_string(const char *data);
+void lcd_generatechar(uint8_t code, const uint8_t *data);
+
+void degreeToSteps(uint8_t mot, float degree, float multiply);
+float stepsToDegree(uint8_t mot, int16_t steps);
+void radiansToSteps(uint8_t mot, float rad, float multiply);
+float stepsToRadian(uint8_t mot, int16_t steps);
+
+void updateDisplay(void);
+void changeDisplayMenu(uint8_t i);
+void updateDisplayChangeValues(uint8_t thisMenu);
+void updateMenu(void);
+
+void initManualOperatingButtons(void);
 uint8_t getButtonEvent(void);
+int8_t getRotaryEncoderEvent(void);
 
-/* parser */
-uint8_t parseCommand();
+uint8_t parseCommand(void);
+void  commandMoveAbs(char* param0, char* param1, char* param2);
+void  commandMoveRel(char* param0, char* param1, char* param2);
+void  commandEnable(char* param0, char* param1);
+char* commandGetMotorPosition(char* param0, char* param1);
+char* commandIsMoving(char* param0);
+char* commandGetAnalog(char* param0);
+char* commandGetOptZeroPos(char* param0);
+void  commandSetOptZeroPos(char* param0, char* param1);
+char* commandGetGearRatio(char* param0);
+void  commandSetGearRatio(char* param0, char* param1);
+char* commandGetFullRotation(char* param0);
+void  commandSetFullRotation(char* param0, char* param1);
+char* commandGetSubSteps(char* param0);
+void  commandSetSubSteps(char* param0, char* param1);
+char* commandGetWaitTime(char* param0);
+void  commandSetWaitTime(char* param0, char* param1);
+void  commandSetConstSpeed(char* param0, char* param1, char* param2);
+void  commandFactoryReset(void);
 
 
 /* =====================================================================
@@ -449,7 +490,7 @@ void initDataStructs(void){
     motor[i].stepUnit             = MOTOR_STEP_UNIT_DEGREE;
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = motor[i].waitBetweenSteps;
-    motor[i].angularVelocity      = 0;
+    motor[i].angularVelocity      = 10.0;
   }
 
   strcpy(rxString.buffer, "0\0");
@@ -675,22 +716,6 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
       _delay_ms(1);
     }
   }
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-    setMotorPosition: set a motor position directly.
-    Here an absolute position will be set.
- --------------------------------------------------------------------- */
-void moveMotorAbsolute(uint8_t mot, float val){
-
-  float diff = 0;
-  float actPos = 0;
-
-  diff = val - actPos;
-
-  moveMotorRelative(mot, diff);
 
   return;
 }
@@ -1110,9 +1135,7 @@ void degreeToSteps(uint8_t mot, float degree, float multiply){
            *motor[mot].gearRatio
            *motor[mot].subSteps)/(360.0f)));
 
-  motor[mot].desiredPosition
-  = motor[mot].actualPosition
-    + (int16_t)roundedSteps;
+  motor[mot].desiredPosition += (int16_t)roundedSteps;
 
   /* calculate rounding-error */
   motor[mot].stepError +=
@@ -1155,9 +1178,7 @@ void radiansToSteps(uint8_t mot, float rad, float multiply){
            *motor[mot].gearRatio
            *motor[mot].subSteps)/(2.0f)));
 
-  motor[mot].desiredPosition
-  = motor[mot].actualPosition
-    + (int16_t)roundedSteps;
+  motor[mot].desiredPosition += (int16_t)roundedSteps;
 
   /* calculate rounding-error */
   motor[mot].stepError +=
@@ -1513,8 +1534,7 @@ void updateMenu(void){
           switch(motor[menu.selectedMotor].stepUnit){
             case MOTOR_STEP_UNIT_STEP:
               /* here: integer operations --> no error possible */
-              motor[menu.selectedMotor].desiredPosition
-              = motor[menu.selectedMotor].actualPosition + rotEncVal;
+              motor[menu.selectedMotor].desiredPosition += (int16_t)rotEncVal;
               break;
 
             case MOTOR_STEP_UNIT_DEGREE:
@@ -1801,7 +1821,7 @@ void commandMoveRel(char* param0, char* param1, char* param2){
   }
 
   if(strcmp(param2, "steps") == 0){
-    motor[i].desiredPosition = motor[i].actualPosition + (int16_t)strtol(param1, (char **)NULL, 10);
+    motor[i].desiredPosition += (int16_t)strtol(param1, (char **)NULL, 10);
   }
   if(strcmp(param2, "deg") == 0){
     degreeToSteps(i, (float)atof(commandParam[1]), 1.0f);
@@ -2182,7 +2202,6 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
       motor[i].actualPosition  = 0;
       motor[i].desiredPosition = -1;
     }
-
   }
 
   return;
@@ -2202,11 +2221,6 @@ void commandFactoryReset(void){
 
   return;
 }
-
-
-
-
-
 
 /* =====================================================================
     interrupt routines
@@ -2365,9 +2379,10 @@ ISR(TIMER2_COMPA_vect){
 
   /* TODO: correct step error */
 
+
   PORTC |= outputDir;     /* set direction */
   _delay_us(5.0);         /* sync */
-  PORTC |= outputStep;    /* make exactly one step steps */
+  PORTC |= outputStep;    /* make exactly one step */
   _delay_us(2.0);         /* sync */
   PORTC &= ~(outputStep);
 
