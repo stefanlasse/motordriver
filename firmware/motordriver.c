@@ -2348,15 +2348,27 @@ ISR(TIMER2_COMPA_vect){
       if(motor[i].delayCounter){
         /* seems not to be, so decrement */
         motor[i].delayCounter--;
+
+        /* and we also got time here to correct motor step error */
+        if(motor[i].stepError > 1.0f){
+          motor[i].desiredPosition += 1;
+          motor[i].stepError -= 1.0f;
+        }
+        if(motor[i].stepError < -1.0f){
+          motor[i].desiredPosition += -1;
+          motor[i].stepError += 1.0f;
+        }
       }
       else{
         /* here we just waited the specified time between two steps */
         motor[i].isMoving = 1;
         if(stepDiff[i] < 0){
+          /* moving CCW */
           outputDir  |= (1 << (2*i + 1)); /* 1 = CCW, 0 = CW */
           outputStep |= (1 << (2*i));
         }
         else{
+          /* moving CW */
           outputStep |= (1 << (2*i));
         }
         /* so we will move and therefore set back the delay counter */
@@ -2364,9 +2376,6 @@ ISR(TIMER2_COMPA_vect){
       }
     }
   }
-
-  /* TODO: correct step error */
-
 
   PORTC |= outputDir;     /* set direction */
   _delay_us(5.0);         /* sync */
