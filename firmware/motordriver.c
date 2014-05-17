@@ -745,7 +745,7 @@ void motorZeroRun(uint8_t i){
   uint16_t j = 0;
 
   /* stop any motor movements (stop timer/counter2) */
-  TCCR2B &= ~ 0x07;
+  TCCR2B &= ~0x07;
 
   keepWaitTime = motor[i].waitBetweenSteps;
 
@@ -755,18 +755,12 @@ void motorZeroRun(uint8_t i){
 
   /* fist step:
    * move 360 degree to find the roughly position of the magnetic zero point.
-   * this will be done with fast moving
-   */
+   * this will be done with fast moving */
   motor[i].waitBetweenSteps = 1;    /* set 1 ms for fast moving */
 
   /* in case we are at any possible zero position: move out */
   while(getADCvalue(i) < thres){
-    while(getADCvalue(i) < thres){
-      motor[i].desiredPosition = motor[i].actualPosition - 15;
-    }
-    /* now we are directly before a possible zero position:
-     * move 200 more steps away from zero point */
-    motor[i].desiredPosition = motor[i].actualPosition -200;
+    moveMotorRelative(i, -200);
   }
 
   /* start first search for zero point */
@@ -778,21 +772,15 @@ void motorZeroRun(uint8_t i){
     }
   }
 
-  /* we had to move <pos> steps to find a zero-position
-   * so the next time we will find our zero-position in
-   * <stepsPerRound> steps */
-
-  /* again: get out of zero-area and therefore move 90 degree forward */
+  /* move 90 degree forward */
   moveMotorRelative(i, (int16_t)round(0.25*stepsPerRound));
 
   /* now we will find our zero position in
-   * 3*<stepsPerRound>/4 steps
-   */
+   * 3*<stepsPerRound>/4 steps */
 
   /* second step:
    * move again to 200 steps before the former found zero position fast.
-   * then move slowly to find the exact magnetic zero position.
-   */
+   * then move slowly to find the exact magnetic zero position. */
 
   /* now move till 200 steps before the zero-position */
   moveMotorRelative(i, (int16_t)round(0.75*stepsPerRound) - 200);
@@ -807,16 +795,15 @@ void motorZeroRun(uint8_t i){
   /* and here we found our magnetic zero position :-) */
 
   /* third step:
-   * got to the internal saved optical zero position
-   */
+   * go to the internal saved optical zero position */
   motor[i].waitBetweenSteps = keepWaitTime;
   moveMotorRelative(i, motor[i].opticalZeroPosition);
 
-  /* no set motor into a defined state */
+  /* now set motor into a defined state */
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
 
-  /* now allow motor movements again */
+  /* allow motor movements again */
   initMotorDelayTimer();
 
   return;
@@ -2168,17 +2155,18 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     val = atof(param2);
 
     if(strcmp(param1, "STOP") == 0){
+      cli();
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
       motor[i].waitBetweenSteps = 3;
-      motor[i].actualPosition  = 0;
-      motor[i].desiredPosition = 0;
+      motor[i].desiredPosition  = motor[i].actualPosition;
+      sei();
       return;
     }
 
     /* now calculate wait time between two steps in ms */
-    waitTime = (uint16_t)round((fabs(val)*1000.0) / ( motor[i].gearRatio
-                                                     *motor[i].stepsPerFullRotation
-                                                     *motor[i].subSteps));
+    waitTime = (uint16_t)round((fabs(val)*1000.0f) / ( motor[i].gearRatio
+                                                      *motor[i].stepsPerFullRotation
+                                                      *motor[i].subSteps));
 
     if(waitTime < 1){
       sprintf(txString.buffer, "err: time too short\0");
@@ -2193,14 +2181,14 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     if(strcmp(param1, "CW")  == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
       motor[i].waitBetweenSteps = waitTime;
-      motor[i].actualPosition  = 0;
-      motor[i].desiredPosition = 1;
+      //motor[i].actualPosition  = 0;
+      motor[i].desiredPosition += 1;
     }
     if(strcmp(param1, "CCW") == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
       motor[i].waitBetweenSteps = waitTime;
-      motor[i].actualPosition  = 0;
-      motor[i].desiredPosition = -1;
+      //motor[i].actualPosition  = 0;
+      motor[i].desiredPosition += -1;
     }
   }
 
@@ -2384,7 +2372,8 @@ ISR(TIMER2_COMPA_vect){
   _delay_us(5.0);         /* sync */
   PORTC |= outputStep;    /* make exactly one step */
   _delay_us(2.0);         /* sync */
-  PORTC &= ~(outputStep);
+  //PORTC &= ~(outputStep);
+  PORTC = 0;
 
   /* update motor positions */
   for(i = 0; i <= MAX_MOTOR; i++){
@@ -2399,7 +2388,7 @@ ISR(TIMER2_COMPA_vect){
         }
         motor[i].actualPosition++;
         if(motor[i].isMovingInfinite){
-          motor[i].desiredPosition++;
+          motor[i].desiredPosition += 1;
         }
       }
       else if(stepDiff[i] < 0){
@@ -2412,7 +2401,7 @@ ISR(TIMER2_COMPA_vect){
         }
         motor[i].actualPosition--;
         if(motor[i].isMovingInfinite){
-          motor[i].desiredPosition--;
+          motor[i].desiredPosition += -1;
         }
       }
       motor[i].isMoving = 0;
