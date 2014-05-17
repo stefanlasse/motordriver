@@ -1131,8 +1131,6 @@ void degreeToSteps(uint8_t mot, float degree, float multiply){
        *motor[mot].gearRatio
        *motor[mot].subSteps)/(360.0f))
        - roundedSteps;
-  sprintf(txString.buffer, "err: %f", motor[mot].stepError);
-  sendText(txString.buffer);
 
   return;
 }
@@ -1174,8 +1172,6 @@ void radiansToSteps(uint8_t mot, float rad, float multiply){
        *motor[mot].gearRatio
        *motor[mot].subSteps)/(2.0f))
        - roundedSteps;
-  sprintf(txString.buffer, "err: %f", motor[mot].stepError);
-  sendText(txString.buffer);
 
   return;
 }
