@@ -65,8 +65,8 @@
 #define ON  1
 #define OFF 0
 
-#define NO_MOTOR  42 /* not allowed to be in [0..3] */
-#define MOTOR0    0
+#define NO_MOTOR  0
+#define MOTOR0    0 /* set as places to shift */
 #define MOTOR1    1
 #define MOTOR2    2
 #define MOTOR3    3
@@ -1198,6 +1198,9 @@ void updateDisplay(void){
         lcd_string(menu.newMenuText[1]);
         strcpy(menu.currentMenuText[1], menu.newMenuText[1]);
         menu.currentDisplayedMenu = menu.newDisplayedMenu;
+        for(j = 0; j <= NUMBER_DISPLAY_VALUE_STRINGS; j++){
+          sprintf(menu.currentDisplayValue[j], "no text");
+        }
       }
       break;
 
@@ -1280,8 +1283,10 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   uint8_t state;
   menuItem *menuPtr;
 
-  uint8_t sLen, sLen1, sLen2;
+  uint8_t sLen;
   uint8_t numSpaces = 0;
+
+  uint8_t c = 0;
 
   /* determine which values shall be changed */
   menuPtr = (menuItem*)pgm_read_word(&menuList[thisMenu]);
@@ -1298,19 +1303,20 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_CHANGE_POSITION:
       for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
-            sprintf(menu.newDisplayValue[i], "%ds", motor[i].actualPosition);
+            sprintf(menu.newDisplayValue[i], "%c%ds", c, motor[i].actualPosition);
             break;
 
           case MOTOR_STEP_UNIT_DEGREE:
             /* 0xDF is the display code for the degree-circle */
-            sprintf(menu.newDisplayValue[i], "%.1f%c", stepsToDegree(i, motor[i].actualPosition), 0xDF);
+            sprintf(menu.newDisplayValue[i], "%c%.1f%c", c, stepsToDegree(i, motor[i].actualPosition), 0xDF);
             break;
 
           case MOTOR_STEP_UNIT_RADIAN:
             /* 0xF7 is the display code for a greek pi */
-            sprintf(menu.newDisplayValue[i], "%.3f%c", stepsToRadian(i, motor[i].actualPosition), 0xF7);
+            sprintf(menu.newDisplayValue[i], "%c%.3f%c", c, stepsToRadian(i, motor[i].actualPosition), 0xF7);
             break;
 
           default:
@@ -1321,65 +1327,72 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_CHANGE_STEP_UNIT:
       for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_STEP){
-          sprintf(menu.newDisplayValue[i], "%s", "step");
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "step");
         }
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_DEGREE){
-          sprintf(menu.newDisplayValue[i], "%s", "degree");
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "degree");
         }
         if(motor[i].stepUnit == MOTOR_STEP_UNIT_RADIAN){
-          sprintf(menu.newDisplayValue[i], "%s", "radian");
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "radian");
         }
       }
       break;
 
     case MENU_CHANGE_WAIT_TIME:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "%d ms", motor[i].waitBetweenSteps);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%d ms", c, motor[i].waitBetweenSteps);
       }
       break;
 
     case MENU_SET_STEP_MULTIPL:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "%.1fx", motor[i].stepMultiplier);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.1fx", c, motor[i].stepMultiplier);
       }
       break;
 
     case MENU_RUN_ZERO_CALIBRATION:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "Zero M%d", i);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%cMot %d", c, i);
       }
       break;
 
     case MENU_CHANGE_GEAR_RATIO:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "%.2f", motor[i].gearRatio);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.2f", c, motor[i].gearRatio);
       }
       break;
 
     case MENU_CHANGE_SUBSTEPS:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "%.0f", motor[i].subSteps);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.0f", c, motor[i].subSteps);
       }
       break;
 
     case MENU_SAVE_CONFIG:
       sprintf(menu.newDisplayValue[0], "Save all");
-      sprintf(menu.newDisplayValue[1], " ");
-      sprintf(menu.newDisplayValue[2], "current");
-      sprintf(menu.newDisplayValue[3], "configs");
+      sprintf(menu.newDisplayValue[1], " current");
+      sprintf(menu.newDisplayValue[2], "configur");
+      sprintf(menu.newDisplayValue[3], "ations  ");
       break;
 
     case MENU_LOAD_CONFIG:
       sprintf(menu.newDisplayValue[0], "Load all");
-      sprintf(menu.newDisplayValue[1], " ");
-      sprintf(menu.newDisplayValue[2], "saved");
-      sprintf(menu.newDisplayValue[3], "configs");
+      sprintf(menu.newDisplayValue[1], " saved  ");
+      sprintf(menu.newDisplayValue[2], "configur");
+      sprintf(menu.newDisplayValue[3], "ations  ");
       break;
 
     case MENU_OPTICAL_ZERO_POS:
       for(i = 0; i <= MAX_MOTOR; i++){
-        sprintf(menu.newDisplayValue[i], "%ds", motor[i].opticalZeroPosition);
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%ds", c, motor[i].opticalZeroPosition);
       }
       break;
 
@@ -1418,6 +1431,8 @@ void updateMenu(void){
 
   uint8_t state;
   menuItem *menuPtr;
+
+  uint8_t i = 0;
 
   float roundedSteps = 0.0;
 
@@ -1458,30 +1473,30 @@ void updateMenu(void){
         break;
 
       case BUTTON_MOTOR0:
-        menu.selectedMotor = MOTOR0;
+        menu.selectedMotor ^= (1 << MOTOR0);
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MOTOR1:
-        menu.selectedMotor = MOTOR1;
+        menu.selectedMotor ^= (1 << MOTOR1);
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MOTOR2:
-        menu.selectedMotor = MOTOR2;
+        menu.selectedMotor ^= (1 << MOTOR2);
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MOTOR3:
-        menu.selectedMotor = MOTOR3;
+        menu.selectedMotor ^= (1 << MOTOR3);
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
       case BUTTON_MENUESCAPE:
         /* or get back to the MENU_SCROLL_MODE */
-        menu.selectedMotor = NO_MOTOR;
+        //menu.selectedMotor = NO_MOTOR;
         menu.newMenuMode = MENU_SCROLL_MODE;
-        menu.currentDisplayedMenu = 42;
+        menu.currentDisplayedMenu = 42; /* TODO: terminate magic number here */
         break;
 
       default:
@@ -1503,74 +1518,101 @@ void updateMenu(void){
           break;
 
         case MENU_CHANGE_POSITION:   /* change motor position */
-          switch(motor[menu.selectedMotor].stepUnit){
-            case MOTOR_STEP_UNIT_STEP:
-              /* here: integer operations --> no error possible */
-              motor[menu.selectedMotor].desiredPosition += (int16_t)rotEncVal;
-              break;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              switch(motor[i].stepUnit){
+                case MOTOR_STEP_UNIT_STEP:
+                  motor[i].desiredPosition += (int16_t)rotEncVal;
+                  break;
 
-            case MOTOR_STEP_UNIT_DEGREE:
-              degreeToSteps(menu.selectedMotor,
-                            (float)rotEncVal,
-                            motor[menu.selectedMotor].stepMultiplier
-                           );
-              break;
+                case MOTOR_STEP_UNIT_DEGREE:
+                  degreeToSteps(i, (float)rotEncVal, motor[i].stepMultiplier);
+                  break;
 
-            case MOTOR_STEP_UNIT_RADIAN:
-              radiansToSteps(menu.selectedMotor,
-                             (float)(rotEncVal)*0.125,
-                             motor[menu.selectedMotor].stepMultiplier
-                            ); /* default step is pi/8 */
-              break;
+                case MOTOR_STEP_UNIT_RADIAN:
+                  /* default step is pi/8 */
+                  radiansToSteps(i, (float)(rotEncVal)*0.125, motor[i].stepMultiplier);
+                  break;
+
+                default:
+                  break;
+              }
+            }
           }
           break;
 
         case MENU_CHANGE_STEP_UNIT:   /* change step units */
-          switch(motor[menu.selectedMotor].stepUnit){
-          case MOTOR_STEP_UNIT_STEP:
-            motor[menu.selectedMotor].stepUnit = MOTOR_STEP_UNIT_DEGREE;
-           break;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              switch(motor[i].stepUnit){
+                case MOTOR_STEP_UNIT_STEP:
+                  motor[i].stepUnit = MOTOR_STEP_UNIT_DEGREE;
+                  break;
 
-           case MOTOR_STEP_UNIT_DEGREE:
-             motor[menu.selectedMotor].stepUnit = MOTOR_STEP_UNIT_RADIAN;
-             break;
+                case MOTOR_STEP_UNIT_DEGREE:
+                  motor[i].stepUnit = MOTOR_STEP_UNIT_RADIAN;
+                  break;
 
-           case MOTOR_STEP_UNIT_RADIAN:
-             motor[menu.selectedMotor].stepUnit = MOTOR_STEP_UNIT_STEP;
-             break;
+                case MOTOR_STEP_UNIT_RADIAN:
+                  motor[i].stepUnit = MOTOR_STEP_UNIT_STEP;
+                  break;
 
-           default:
-             asm("nop");
-             break;
+                default:
+                  asm("nop");
+                  break;
+              }
+            }
           }
           break;
 
         case MENU_CHANGE_WAIT_TIME:   /* change wait time between steps */
-          motor[menu.selectedMotor].waitBetweenSteps += rotEncVal;
-          asm("nop");
-          if(motor[menu.selectedMotor].waitBetweenSteps < 1){
-            /* wait time is at least 1 ms */
-            motor[menu.selectedMotor].waitBetweenSteps = 1;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].waitBetweenSteps += rotEncVal;
+              asm("nop");
+              if(motor[i].waitBetweenSteps < 1){
+                /* wait time is at least 1 ms */
+                motor[i].waitBetweenSteps = 1;
+              }
+            }
           }
           break;
 
         case MENU_SET_STEP_MULTIPL:
-          motor[menu.selectedMotor].stepMultiplier += (float)(rotEncVal)/10.0;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].stepMultiplier += (float)(rotEncVal)/10.0;
+            }
+          }
           break;
 
         case MENU_RUN_ZERO_CALIBRATION:   /* run ZERO calibration */
-          motorZeroRun(menu.selectedMotor);
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motorZeroRun(i);
+              menu.selectedMotor ^= (1 << i);
+              updateDisplay();
+            }
+          }
           break;
 
         case MENU_CHANGE_GEAR_RATIO:   /* change gear ratio */
-          motor[menu.selectedMotor].gearRatio += (float)rotEncVal/100.0;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].gearRatio += (float)rotEncVal/100.0;
+            }
+          }
           break;
 
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
-          motor[menu.selectedMotor].subSteps += rotEncVal;
-          asm("nop");
-          if(motor[menu.selectedMotor].subSteps < 1){
-            motor[menu.selectedMotor].subSteps = 1;
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].subSteps += rotEncVal;
+              asm("nop");
+              if(motor[i].subSteps < 1){
+                motor[i].subSteps = 1;
+              }
+            }
           }
           break;
 
@@ -1583,7 +1625,11 @@ void updateMenu(void){
           break;
 
         case MENU_OPTICAL_ZERO_POS:
-          defineOpticalZeroPosition(menu.selectedMotor, rotEncVal);
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              defineOpticalZeroPosition(i, rotEncVal);
+            }
+          }
           break;
 
         case MENU_CONST_ANGULAR_SPEED:
