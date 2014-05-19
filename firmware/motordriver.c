@@ -42,7 +42,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v0.2\0")
+#define FW_VERSION ("v0.3\0")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
