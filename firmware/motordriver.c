@@ -142,7 +142,7 @@ typedef struct{
   float stepMultiplier;           /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;      /* in milliseconds */
   uint16_t delayCounter;          /* counts the waited milliseconds */
-  float angularVelocity;          /* in seconds per full rotation */
+  uint8_t angularVelocity;        /* in seconds per full rotation */
 
 }motorInfo;
 
@@ -433,6 +433,7 @@ void degreeToSteps(uint8_t mot, float degree, float multiply);
 float stepsToDegree(uint8_t mot, int16_t steps);
 void radiansToSteps(uint8_t mot, float rad, float multiply);
 float stepsToRadian(uint8_t mot, int16_t steps);
+void setConstSpeed(uint8_t i, uint8_t state);
 
 void updateDisplay(void);
 void changeDisplayMenu(uint8_t i);
@@ -479,18 +480,18 @@ void initDataStructs(void){
     motor[i].actualPosition       = 0;
     motor[i].desiredPosition      = 0;
     motor[i].opticalZeroPosition  = 0;
-    motor[i].stepError            = 0.0;
+    motor[i].stepError            = 0.0f;
     motor[i].isMoving             = 0;
     motor[i].isTurnedOn           = 0;
     motor[i].isMovingInfinite     = MOTOR_MOVE_INFINITE_STOP;
-    motor[i].gearRatio            = 60.0/18.0;
-    motor[i].stepsPerFullRotation = 400.0;
-    motor[i].subSteps             = 4.0;
-    motor[i].stepMultiplier       = 1.0;
+    motor[i].gearRatio            = 60.0f/18.0f;
+    motor[i].stepsPerFullRotation = 400.0f;
+    motor[i].subSteps             = 4.0f;
+    motor[i].stepMultiplier       = 1.0f;
     motor[i].stepUnit             = MOTOR_STEP_UNIT_DEGREE;
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = motor[i].waitBetweenSteps;
-    motor[i].angularVelocity      = 10.0;
+    motor[i].angularVelocity      = OFF;
   }
 
   strcpy(rxString.buffer, "0\0");
@@ -1180,6 +1181,42 @@ float stepsToRadian(uint8_t mot, int16_t steps){
 }
 
 /* ---------------------------------------------------------------------
+   set constant angular velocity
+ --------------------------------------------------------------------- */
+void setConstSpeed(uint8_t i, uint8_t state){
+
+  cli();
+
+  switch(state){
+    case MOTOR_MOVE_INFINITE_STOP:
+      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
+      motor[i].desiredPosition  = motor[i].actualPosition;
+      break;
+
+    case MOTOR_MOVE_INFINITE_CW:
+      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
+      motor[i].desiredPosition  = motor[i].actualPosition;
+      motor[i].desiredPosition += 1;
+      break;
+
+    case MOTOR_MOVE_INFINITE_CCW:
+      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
+      motor[i].desiredPosition  = motor[i].actualPosition;
+      motor[i].desiredPosition += -1;
+      break;
+
+    default:
+      asm("nop");
+      break;
+  }
+
+  sei();
+
+  return;
+}
+
+
+/* ---------------------------------------------------------------------
    replaces the actual display content with another content if
    necessary
  --------------------------------------------------------------------- */
@@ -1306,7 +1343,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
-            sprintf(menu.newDisplayValue[i], "%c%ds", c, motor[i].actualPosition);
+            sprintf(menu.newDisplayValue[i], "%c%dst", c, motor[i].actualPosition);
             break;
 
           case MOTOR_STEP_UNIT_DEGREE:
@@ -1397,7 +1434,18 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_CONST_ANGULAR_SPEED:
-      /**/
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_STOP){
+          sprintf(menu.newDisplayValue[i], "%cSTOP", c);
+        }
+        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CW){
+          sprintf(menu.newDisplayValue[i], "%cCW", c);
+        }
+        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CCW){
+          sprintf(menu.newDisplayValue[i], "%cCCW", c);
+        }
+      }
       break;
 
     default:  /* in case of fire ;-) */
@@ -1496,7 +1544,6 @@ void updateMenu(void){
         /* or get back to the MENU_SCROLL_MODE */
         menu.newMenuMode = MENU_SCROLL_MODE;
         menu.currentDisplayedMenu += 1;
-        updateDisplay();
         break;
 
       default:
@@ -1632,7 +1679,28 @@ void updateMenu(void){
           break;
 
         case MENU_CONST_ANGULAR_SPEED:
-          /**/
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              switch(motor[i].angularVelocity){
+                case MOTOR_MOVE_INFINITE_STOP:
+                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_CW;
+                  break;
+
+                case MOTOR_MOVE_INFINITE_CW:
+                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_CCW;
+                  break;
+
+                case MOTOR_MOVE_INFINITE_CCW:
+                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_STOP;
+                  break;
+
+                default:
+                  asm("nop");
+                  break;
+              }
+              setConstSpeed(i, motor[i].angularVelocity);
+            }
+          }
           break;
 
         default:  /* in case of fire ;-) */
