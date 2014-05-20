@@ -1494,7 +1494,6 @@ void updateMenu(void){
 
       case BUTTON_MENUESCAPE:
         /* or get back to the MENU_SCROLL_MODE */
-        //menu.selectedMotor = NO_MOTOR;
         menu.newMenuMode = MENU_SCROLL_MODE;
         menu.currentDisplayedMenu = 42; /* TODO: terminate magic number here */
         break;
@@ -1504,7 +1503,6 @@ void updateMenu(void){
         break;
     }
   }
-  /* test */
 
   if(menuState == MENU_VALUE_CHANGE){
     /* here we have a motor selected and want to change any of its values */
@@ -2291,7 +2289,7 @@ ISR(TIMER0_COMPA_vect){
 
   uint8_t inputReg = 0;
 
-  static int16_t last = 0;         /* save old rot enc value */
+  static int16_t last = 0;  /* save old rot enc value */
 
   inputReg = PINB;  /* all buttons are connected to PORTB */
 
@@ -2299,35 +2297,36 @@ ISR(TIMER0_COMPA_vect){
    * exclude the rotary encoder but include the rotary encoder press-function
    */
 
-  if((inputReg & ALL_BUTTONS) == ALL_BUTTONS){
-    /* no button has been touched */
-    asm("nop");
+  /* check if a button is actually in process */
+  if(buttonState.readyToProcess){
+    return;
   }
   else{
-    /* check if a button is actually in process */
-    if(buttonState.readyToProcess){
-      return;
-    }
-    else{
-      /* debouncing the buttons */
-      if(buttonState.inDebouncingMode == 0){
+    /* debouncing the buttons */
+    if(buttonState.inDebouncingMode == 0){
+      if(buttonState.inputRegister != inputReg){
         buttonState.inputRegister = inputReg;
         buttonState.inDebouncingMode = 1;
       }
       else{
-        if(buttonState.inputRegister == inputReg){
-          /* debouncing completed, no register change --> button recognized */
-          buttonState.readyToProcess = 1;
-        }
-        else{
-          /* debouncing failed, start again */
-          buttonState.inputRegister = 0;
-        }
-
-        buttonState.inDebouncingMode = 0;
+        /* button is still pressed */
+        goto ROTARY_ENCODER;
       }
     }
+    else{
+      if(buttonState.inputRegister == inputReg){
+        /* debouncing completed, no register change --> button recognized */
+        buttonState.readyToProcess = 1;
+      }
+      else{
+        /* debouncing failed, start again */
+        buttonState.inputRegister = 0;
+      }
+
+      buttonState.inDebouncingMode = 0;
+    }
   }
+
 
   /* now care about the rotary encoder (only rotations)
    *
@@ -2335,6 +2334,7 @@ ISR(TIMER0_COMPA_vect){
    * http://www.mikrocontroller.net/articles/Drehgeber
    */
 
+ROTARY_ENCODER:
   last = (last << 2) & 0x0F;
   if(PHASE_A){
     last |= 2;
@@ -2513,6 +2513,8 @@ RESET:
   }
 
   loadConfigFromEEPROM();
+
+  updateDisplay();
 
   sei();
 
