@@ -1495,7 +1495,8 @@ void updateMenu(void){
       case BUTTON_MENUESCAPE:
         /* or get back to the MENU_SCROLL_MODE */
         menu.newMenuMode = MENU_SCROLL_MODE;
-        menu.currentDisplayedMenu = 42; /* TODO: terminate magic number here */
+        menu.currentDisplayedMenu += 1;
+        updateDisplay();
         break;
 
       default:
