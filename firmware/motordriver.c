@@ -42,7 +42,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v0.3\0")
+#define FW_VERSION ("v1.0\0")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -80,10 +80,10 @@
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
-#define BUTTON_MOTOR0       PB4
-#define BUTTON_MOTOR1       PB5
-#define BUTTON_MOTOR2       PB6
-#define BUTTON_MOTOR3       PB7
+#define BUTTON_MOTOR0       PB7
+#define BUTTON_MOTOR1       PB6
+#define BUTTON_MOTOR2       PB5
+#define BUTTON_MOTOR3       PB4
 #define BUTTON_MENUESCAPE   PB3
 #define BUTTON_ROT_ENC      PB0
 
@@ -1555,7 +1555,7 @@ void updateMenu(void){
   if(menuState == MENU_VALUE_CHANGE){
     /* here we have a motor selected and want to change any of its values */
     rotEncVal = getRotaryEncoderEvent();
-    if((rotEncVal != 0) && (menu.selectedMotor != NO_MOTOR)){
+    if(rotEncVal != 0){
       menuPtr = (menuItem*)pgm_read_word(&menuList[menu.currentDisplayedMenu]);
       state = (uint8_t)pgm_read_byte(&menuPtr->state);
 
