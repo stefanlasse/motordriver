@@ -1,7 +1,6 @@
 *.o
 *.out
 *.map
-*.hex
 *.elf
 *.bin
 *.lst
