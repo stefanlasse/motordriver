@@ -1870,6 +1870,8 @@ uint8_t parseCommand(void){
 void commandMoveAbs(char* param0, char* param1, char* param2){
 
   uint8_t i = 0;
+  float actMotorPos = 0.0f;
+  float posDiff = 0.0f;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
@@ -1881,12 +1883,15 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
     motor[i].desiredPosition = (int16_t)strtol(param1, (char **)NULL, 10);
   }
 
-  /* TODO: this is not correct, xxxToSteps will be relative movement */
   if(strcmp(param2, "deg") == 0){
-    degreeToSteps(i, (float)atof(param1), 1.0);
+    actMotorPos = stepsToDegree(i, motor[i].actualPosition);
+    posDiff = (float)atof(param1) - actMotorPos;
+    degreeToSteps(i, posDiff, 1.0);
   }
   if(strcmp(param2, "pi") == 0){
-    radiansToSteps(i, (float)atof(param1), 1.0);
+    actMotorPos = stepsToRadian(i, motor[i].actualPosition);
+    posDiff = (float)atof(param1) - actMotorPos;
+    radiansToSteps(i, posDiff, 1.0);
   }
 
   return;
