@@ -42,7 +42,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v1.0\0")
+#define FW_VERSION ("v1.0")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -131,15 +131,15 @@ typedef struct{
   int16_t actualPosition;         /* always in steps */
   int16_t desiredPosition;        /* always in steps */
   int16_t opticalZeroPosition;    /* as offset from zero position in steps */
-  float stepError;
+  double stepError;
   uint8_t isMoving;
   uint8_t isTurnedOn;
   uint8_t isMovingInfinite;
-  float gearRatio;                /* initially set to 60:18 */
-  float stepsPerFullRotation;     /* initially set to 400 */
-  float subSteps;                 /* could be 1, 2, 4, 8, 16 */
+  double gearRatio;                /* initially set to 60:18 */
+  double stepsPerFullRotation;     /* initially set to 400 */
+  double subSteps;                 /* could be 1, 2, 4, 8, 16 */
   uint8_t stepUnit;               /* could be: step, degree, radian */
-  float stepMultiplier;           /* multiplies the default step just at manual operation */
+  double stepMultiplier;           /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;      /* in milliseconds */
   uint16_t delayCounter;          /* counts the waited milliseconds */
   uint8_t angularVelocity;        /* in seconds per full rotation */
@@ -390,10 +390,10 @@ char EEMEM IDNtext[IDN_STRING_LENGTH + 1];
 
 /* keep motor information in EEPROM */
 int16_t  EEMEM opticalZeroPositionEE[MAX_MOTOR+1];
-float    EEMEM gearRatioEE[MAX_MOTOR+1];
-float    EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
-float    EEMEM subStepsEE[MAX_MOTOR+1];
-float    EEMEM stepMultiplierEE[MAX_MOTOR+1];
+double    EEMEM gearRatioEE[MAX_MOTOR+1];
+double    EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
+double    EEMEM subStepsEE[MAX_MOTOR+1];
+double    EEMEM stepMultiplierEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 
@@ -430,10 +430,10 @@ void lcd_setcursor(uint8_t x, uint8_t y);
 void lcd_string(const char *data);
 void lcd_generatechar(uint8_t code, const uint8_t *data);
 
-void degreeToSteps(uint8_t mot, float degree, float multiply);
-float stepsToDegree(uint8_t mot, int16_t steps);
-void radiansToSteps(uint8_t mot, float rad, float multiply);
-float stepsToRadian(uint8_t mot, int16_t steps);
+void degreeToSteps(uint8_t mot, double degree, double multiply);
+double stepsToDegree(uint8_t mot, int16_t steps);
+void radiansToSteps(uint8_t mot, double rad, double multiply);
+double stepsToRadian(uint8_t mot, int16_t steps);
 void setConstSpeed(uint8_t i, uint8_t state);
 
 void updateDisplay(void);
@@ -475,7 +475,7 @@ void  commandFactoryReset(void);
  --------------------------------------------------------------------- */
 void initDataStructs(void){
 
-  uint8_t i, j;
+  uint8_t i;
 
   for(i = 0; i <= MAX_MOTOR; i++){
     motor[i].actualPosition       = 0;
@@ -681,7 +681,6 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
 
   int16_t  i;
   uint16_t j;
-  int16_t movSteps = steps;
 
   /* set direction */
   if(steps == 0){
@@ -731,7 +730,7 @@ void defineOpticalZeroPosition(uint8_t i, int8_t step){
 void motorZeroRun(uint8_t i){
 
   uint16_t keepWaitTime = 0;
-  float stepsPerRound = 0.0f;
+  double stepsPerRound = 0.0f;
   uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
 
@@ -840,10 +839,10 @@ void saveConfigToEEPROM(void){
 
   for(i = 0; i <= MAX_MOTOR; i++){
     eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
-    eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
-    eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(float));
-    eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(float));
+    eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
+    eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
+    eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
+    eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
     eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
     eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
   }
@@ -864,10 +863,10 @@ void loadConfigFromEEPROM(void){
 
   for(i = 0; i <= MAX_MOTOR; i++){
     eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(float));
-    eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(float));
-    eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(float));
-    eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(float));
+    eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
+    eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
+    eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
+    eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
     eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
     eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
   }
@@ -1104,9 +1103,9 @@ void lcd_generatechar(uint8_t code, const uint8_t *data){
 /* ---------------------------------------------------------------------
    set desired motor position if unit is degree
  --------------------------------------------------------------------- */
-void degreeToSteps(uint8_t mot, float degree, float multiply){
+void degreeToSteps(uint8_t mot, double degree, double multiply){
 
-  float roundedSteps = 0.0;
+  double roundedSteps = 0.0;
 
   roundedSteps = round(degree * multiply *
           ((motor[mot].stepsPerFullRotation
@@ -1129,11 +1128,11 @@ void degreeToSteps(uint8_t mot, float degree, float multiply){
 /* ---------------------------------------------------------------------
    calculate degree from steps
  --------------------------------------------------------------------- */
-float stepsToDegree(uint8_t mot, int16_t steps){
+double stepsToDegree(uint8_t mot, int16_t steps){
 
-  float radian = 0.0f;
+  double radian = 0.0f;
 
-  radian = (float)(steps)
+  radian = (steps)
                   *( (360.0f)/(motor[mot].gearRatio
                               *motor[mot].subSteps
                               *motor[mot].stepsPerFullRotation) );
@@ -1145,9 +1144,9 @@ float stepsToDegree(uint8_t mot, int16_t steps){
 /* ---------------------------------------------------------------------
    set desired motor position if unit is degree
  --------------------------------------------------------------------- */
-void radiansToSteps(uint8_t mot, float rad, float multiply){
+void radiansToSteps(uint8_t mot, double rad, double multiply){
 
-  float roundedSteps = 0.0f;
+  double roundedSteps = 0.0f;
 
   roundedSteps = round(rad * multiply *
           ((motor[mot].stepsPerFullRotation
@@ -1170,11 +1169,11 @@ void radiansToSteps(uint8_t mot, float rad, float multiply){
 /* ---------------------------------------------------------------------
    calculate radians from steps
  --------------------------------------------------------------------- */
-float stepsToRadian(uint8_t mot, int16_t steps){
+double stepsToRadian(uint8_t mot, int16_t steps){
 
-  float radian = 0.0f;
+  double radian = 0.0f;
 
-  radian = (float)(steps)
+  radian = (steps)
                   *( (2.0f)/(motor[mot].gearRatio
                             *motor[mot].subSteps
                             *motor[mot].stepsPerFullRotation) );
@@ -1323,7 +1322,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   menuItem *menuPtr;
 
   uint8_t sLen;
-  uint8_t numSpaces = 0;
 
   uint8_t c = 0;
 
@@ -1477,8 +1475,6 @@ void updateMenu(void){
 
   uint8_t i = 0;
 
-  float roundedSteps = 0.0;
-
   /* first check if we have something to change at all */
   if(buttonState.readyToProcess == 0 && rotEnc.readyToProcess == 0){
     /* nothing to be done */
@@ -1546,6 +1542,7 @@ void updateMenu(void){
         /* or get back to the MENU_SCROLL_MODE */
         menu.newMenuMode = MENU_SCROLL_MODE;
         menu.currentDisplayedMenu += 1;
+        menu.fastMovingMode = OFF;
         break;
 
       default:
@@ -1580,17 +1577,17 @@ void updateMenu(void){
 
                 case MOTOR_STEP_UNIT_DEGREE:
                   if(menu.fastMovingMode){
-                    degreeToSteps(i, ((float)rotEncVal)*10.0, motor[i].stepMultiplier);
+                    degreeToSteps(i, (rotEncVal)*10.0, motor[i].stepMultiplier);
                   }
                   else{
-                    degreeToSteps(i, (float)rotEncVal, motor[i].stepMultiplier);
+                    degreeToSteps(i, rotEncVal, motor[i].stepMultiplier);
                   }
                   break;
 
                 case MOTOR_STEP_UNIT_RADIAN:
                   /* default step is pi/8 */
                   /* pi/8 is fast enough, so no fast moving mode here */
-                  radiansToSteps(i, (float)(rotEncVal)*0.125, motor[i].stepMultiplier);
+                  radiansToSteps(i, (rotEncVal)*0.125, motor[i].stepMultiplier);
                   break;
 
                 default:
@@ -1640,7 +1637,7 @@ void updateMenu(void){
         case MENU_SET_STEP_MULTIPL:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              motor[i].stepMultiplier += (float)(rotEncVal)/10.0;
+              motor[i].stepMultiplier += (rotEncVal)/10.0;
             }
           }
           break;
@@ -1678,7 +1675,12 @@ void updateMenu(void){
         case MENU_OPTICAL_ZERO_POS:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              defineOpticalZeroPosition(i, rotEncVal);
+              if(menu.fastMovingMode){
+                defineOpticalZeroPosition(i, rotEncVal*100);
+              }
+              else{
+                defineOpticalZeroPosition(i, rotEncVal);
+              }
             }
           }
           break;
@@ -1876,8 +1878,8 @@ uint8_t parseCommand(void){
 void commandMoveAbs(char* param0, char* param1, char* param2){
 
   uint8_t i = 0;
-  float actMotorPos = 0.0f;
-  float posDiff = 0.0f;
+  double actMotorPos = 0.0f;
+  double posDiff = 0.0f;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
@@ -1891,12 +1893,12 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
 
   if(strcmp(param2, "deg") == 0){
     actMotorPos = stepsToDegree(i, motor[i].actualPosition);
-    posDiff = (float)atof(param1) - actMotorPos;
+    posDiff = atof(param1) - actMotorPos;
     degreeToSteps(i, posDiff, 1.0);
   }
   if(strcmp(param2, "pi") == 0){
     actMotorPos = stepsToRadian(i, motor[i].actualPosition);
-    posDiff = (float)atof(param1) - actMotorPos;
+    posDiff = atof(param1) - actMotorPos;
     radiansToSteps(i, posDiff, 1.0);
   }
 
@@ -1920,10 +1922,10 @@ void commandMoveRel(char* param0, char* param1, char* param2){
     motor[i].desiredPosition += (int16_t)strtol(param1, (char **)NULL, 10);
   }
   if(strcmp(param2, "deg") == 0){
-    degreeToSteps(i, (float)atof(commandParam[1]), 1.0f);
+    degreeToSteps(i, atof(commandParam[1]), 1.0f);
   }
   if(strcmp(param2, "pi") == 0){
-    radiansToSteps(i, (float)atof(commandParam[1]), 1.0f);
+    radiansToSteps(i, atof(commandParam[1]), 1.0f);
   }
 
   return;
@@ -1966,21 +1968,21 @@ char* commandGetMotorPosition(char* param0, char* param1){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
     if(strcmp(param1, "steps") == 0){
-      sprintf(txString.buffer, "%d steps\0", motor[i].actualPosition);
+      sprintf(txString.buffer, "%d steps", motor[i].actualPosition);
     }
     else if(strcmp(param1, "deg") == 0){
-      sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f deg", stepsToDegree(i, motor[i].actualPosition));
     }
     else if(strcmp(param1, "pi") == 0){
-      sprintf(txString.buffer, "%f pi\0", stepsToRadian(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f pi", stepsToRadian(i, motor[i].actualPosition));
     }
     else{
       /* wrong unit argument returns in degree */
-      sprintf(txString.buffer, "%f deg\0", stepsToDegree(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f deg", stepsToDegree(i, motor[i].actualPosition));
     }
   }
 
@@ -1997,14 +1999,14 @@ char* commandIsMoving(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
     if(motor[i].desiredPosition - motor[i].actualPosition){
-      sprintf(txString.buffer, "1\0");
+      sprintf(txString.buffer, "1");
     }
     else{
-      sprintf(txString.buffer, "0\0");
+      sprintf(txString.buffer, "0");
     }
   }
 
@@ -2022,11 +2024,11 @@ char* commandGetAnalog(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if((i < MOTOR_SENS0) || (i > MOTOR_SENS_MAX)){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
     val = getADCvalue(i);
-    sprintf(txString.buffer, "%d\0", val);
+    sprintf(txString.buffer, "%d", val);
   }
 
   return txString.buffer;
@@ -2042,10 +2044,10 @@ char* commandGetOptZeroPos(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%d steps\0", motor[i].opticalZeroPosition);
+    sprintf(txString.buffer, "%d steps", motor[i].opticalZeroPosition);
   }
 
   return txString.buffer;
@@ -2063,7 +2065,7 @@ void commandSetOptZeroPos(char* param0, char* param1){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
     return;
   }
@@ -2085,10 +2087,10 @@ char* commandGetGearRatio(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%f\0", motor[i].gearRatio);
+    sprintf(txString.buffer, "%f", motor[i].gearRatio);
   }
 
   return txString.buffer;
@@ -2100,12 +2102,12 @@ char* commandGetGearRatio(char* param0){
 void commandSetGearRatio(char* param0, char* param1){
 
   uint8_t i = 0;
-  float val = 0.0;
+  double val = 0.0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
     return;
   }
@@ -2127,10 +2129,10 @@ char* commandGetFullRotation(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%.0f\0", motor[i].stepsPerFullRotation);
+    sprintf(txString.buffer, "%.0f", motor[i].stepsPerFullRotation);
   }
 
   return txString.buffer;
@@ -2142,12 +2144,12 @@ char* commandGetFullRotation(char* param0){
 void commandSetFullRotation(char* param0, char* param1){
 
   uint8_t i = 0;
-  float val = 0.0;
+  double val = 0.0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
     return;
   }
@@ -2169,10 +2171,10 @@ char* commandGetSubSteps(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%.0f\0", motor[i].subSteps);
+    sprintf(txString.buffer, "%.0f", motor[i].subSteps);
   }
 
   return txString.buffer;
@@ -2184,12 +2186,12 @@ char* commandGetSubSteps(char* param0){
 void commandSetSubSteps(char* param0, char* param1){
 
   uint8_t i = 0;
-  float val = 0.0;
+  double val = 0.0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
     return;
   }
@@ -2211,10 +2213,10 @@ char* commandGetWaitTime(char* param0){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor: %d\0", i);
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%d\0", motor[i].waitBetweenSteps);
+    sprintf(txString.buffer, "%d", motor[i].waitBetweenSteps);
   }
 
   return txString.buffer;
@@ -2231,7 +2233,7 @@ void commandSetWaitTime(char* param0, char* param1){
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor\0");
+    sprintf(txString.buffer, "err: unknown motor");
     sendText(txString.buffer);
     return;
   }
@@ -2249,13 +2251,13 @@ void commandSetWaitTime(char* param0, char* param1){
 void commandSetConstSpeed(char* param0, char* param1, char* param2){
 
   uint8_t i = 0;
-  float val = 0.0;
+  double val = 0.0;
   uint16_t waitTime = 1;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
   if(i < MOTOR0 || i > MAX_MOTOR){
-    sprintf(txString.buffer, "err: unknown motor\0");
+    sprintf(txString.buffer, "err: unknown motor");
     sendText(txString.buffer);
     return;
   }
@@ -2278,12 +2280,12 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
                                                       *motor[i].subSteps));
 
     if(waitTime < 1){
-      sprintf(txString.buffer, "err: time too short\0");
+      sprintf(txString.buffer, "err: time too short");
       sendText(txString.buffer);
       return;
     }
     if(waitTime > 9999){
-    sprintf(txString.buffer, "err: time too long\0");
+    sprintf(txString.buffer, "err: time too long");
     sendText(txString.buffer);
     }
 
@@ -2433,20 +2435,20 @@ ROTARY_ENCODER:
  --------------------------------------------------------------------- */
 ISR(TIMER2_COMPA_vect){
 
-  uint8_t i;
-  int16_t stepDiff[4];
+  uint8_t i = 0;
+  int16_t stepDiff[MAX_MOTOR + 1];
 
   uint8_t outputDir  = 0;
   uint8_t outputStep = 0;
 
-  float stepsPerFullRotation = 0.0;
-
-  stepsPerFullRotation =  motor[i].gearRatio
-                         *motor[i].stepsPerFullRotation
-                         *motor[i].subSteps;
+  double stepsPerFullRotation[MAX_MOTOR + 1];
 
   for(i = 0; i <= MAX_MOTOR; i++){
     stepDiff[i] = motor[i].desiredPosition - motor[i].actualPosition;
+
+    stepsPerFullRotation[i] =  motor[i].gearRatio
+                              *motor[i].stepsPerFullRotation
+                              *motor[i].subSteps;
 
     if(stepDiff[i] == 0){
       /* no motor movement required */
@@ -2490,7 +2492,6 @@ ISR(TIMER2_COMPA_vect){
   _delay_us(5.0);         /* sync */
   PORTC |= outputStep;    /* make exactly one step */
   _delay_us(2.0);         /* sync */
-  //PORTC &= ~(outputStep);
   PORTC = 0;
 
   /* update motor positions */
@@ -2498,11 +2499,11 @@ ISR(TIMER2_COMPA_vect){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
         /* check if we got one full rotation */
-        if(((float)(motor[i].actualPosition) + 1.0) > stepsPerFullRotation){
+        if(((motor[i].actualPosition) + 1.0) > stepsPerFullRotation[i]){
           /* so set back to 0 */
           motor[i].actualPosition = 0;
           /* correct desired motor position */
-          motor[i].desiredPosition -= (int16_t)round(stepsPerFullRotation);
+          motor[i].desiredPosition -= (int16_t)round(stepsPerFullRotation[i]);
         }
         motor[i].actualPosition++;
         if(motor[i].isMovingInfinite){
@@ -2511,11 +2512,11 @@ ISR(TIMER2_COMPA_vect){
       }
       else if(stepDiff[i] < 0){
       /* check if we got one full rotation */
-        if(((float)(motor[i].actualPosition) - 1.0) < 0.0){
+        if(((motor[i].actualPosition) - 1.0) < 0.0){
           /* so set back to max steps per round */
-          motor[i].actualPosition = (int16_t)round(stepsPerFullRotation);
+          motor[i].actualPosition = (int16_t)round(stepsPerFullRotation[i]);
           /* correct desired motor position */
-          motor[i].desiredPosition += (int16_t)round(stepsPerFullRotation);
+          motor[i].desiredPosition += (int16_t)round(stepsPerFullRotation[i]);
         }
         motor[i].actualPosition--;
         if(motor[i].isMovingInfinite){
@@ -2723,6 +2724,7 @@ RESET:
       case 0x99:    /* STOPALL */
         for(i = 0; i <= MAX_MOTOR; i++){
           motor[i].desiredPosition = motor[i].actualPosition;
+          motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
         }
         break;
 
