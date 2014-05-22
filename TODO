@@ -27,10 +27,6 @@ Erklaerung:
 = P1/P2 (gespeicherte Positionen anfahren, abs. oder relativ)
 
 
-NOTE SL: fastmode gibts entweder mit anderer step unit oder dem step multiplier
-- Fastmode fuer den Motor erlauben (z.B. mit Druecken oder Beschleunigung)
-
-
 zum Befehlssatz (was noch so gut waere):
 
 - setzero (sagt 'dies ist jetzt die Nullposition', e.g. fuer Waveplate
@@ -45,10 +41,8 @@ wenn Schritt = 'setmem 7 -1 -1 -1 -1 a' ist, dann geht es ab Schritt 7
 wieder auf Anfang.
 - getmem (lese im speicher was ist pos XX)
 - gomem XX (geht auf Stellung XX)
-- stopall (stopt einfach alles, e.g. Emergency)
 - nogo XX yy zz (ermoeglicht einen gewissen Bereich zu verbieten, z.B.
 weil dann die Power zu hoch wird)
 
-NOTE SL: nein, es wird eine bedienungsanleitung für die befehle geben, daher kein echo.
-- echo (gibt die Befehle auf dem Display aus)
+
 
