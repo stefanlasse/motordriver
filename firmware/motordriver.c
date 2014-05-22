@@ -297,7 +297,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
   Then add new defined display text to the menuList array.
 
-  add the contents to be changes in the display subsystem
+  add the contents to be changed in the display subsystem
 */
 
 
@@ -308,14 +308,13 @@ ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
 ADD_DISPLAY_TEXT(4 , "Set step\nmultiplier\0"          )
 ADD_DISPLAY_TEXT(5 , "Run zero\ncalibration\0"         )
-ADD_DISPLAY_TEXT(6 , "Change gear\nratio\0"            )
-ADD_DISPLAY_TEXT(7 , "Change motor\nsubstep\0"         )
-ADD_DISPLAY_TEXT(8 , "Save current\nconfiguration\0"   )
-ADD_DISPLAY_TEXT(9 , "Load last\nconfiguration\0"      )
-ADD_DISPLAY_TEXT(10, "Define optical\nzero position\0" )
-ADD_DISPLAY_TEXT(11, "Set constant\nangular speed\0"   )
+ADD_DISPLAY_TEXT(6 , "Change motor\nsubstep\0"         )
+ADD_DISPLAY_TEXT(7 , "Save current\nconfiguration\0"   )
+ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
+ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
+ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
 
-#define NUMBER_OF_DISPLAY_MENUS 12
+#define NUMBER_OF_DISPLAY_MENUS 11
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -323,19 +322,18 @@ ADD_DISPLAY_TEXT(11, "Set constant\nangular speed\0"   )
 #define MENU_CHANGE_WAIT_TIME       3
 #define MENU_SET_STEP_MULTIPL       4
 #define MENU_RUN_ZERO_CALIBRATION   5
-#define MENU_CHANGE_GEAR_RATIO      6
-#define MENU_CHANGE_SUBSTEPS        7
-#define MENU_SAVE_CONFIG            8
-#define MENU_LOAD_CONFIG            9
-#define MENU_OPTICAL_ZERO_POS       10
-#define MENU_CONST_ANGULAR_SPEED    11
+#define MENU_CHANGE_SUBSTEPS        6
+#define MENU_SAVE_CONFIG            7
+#define MENU_LOAD_CONFIG            8
+#define MENU_OPTICAL_ZERO_POS       9
+#define MENU_CONST_ANGULAR_SPEED    10
 
 
 /* to hold a list of menu entries */
 const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
-                                            &disp_9_,  &disp_10_, &disp_11_
+                                            &disp_9_,  &disp_10_
                                            };
 
 /* to keep information where we are in the menu */
@@ -1402,13 +1400,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       }
       break;
 
-    case MENU_CHANGE_GEAR_RATIO:
-      for(i = 0; i <= MAX_MOTOR; i++){
-        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
-        sprintf(menu.newDisplayValue[i], "%c%.2f", c, motor[i].gearRatio);
-      }
-      break;
-
     case MENU_CHANGE_SUBSTEPS:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
@@ -1657,14 +1648,6 @@ void updateMenu(void){
               motorZeroRun(i);
               menu.selectedMotor ^= (1 << i);
               updateDisplay();
-            }
-          }
-          break;
-
-        case MENU_CHANGE_GEAR_RATIO:   /* change gear ratio */
-          for(i = MOTOR0; i <= MAX_MOTOR; i++){
-            if(menu.selectedMotor & (1 << i)){
-              motor[i].gearRatio += (float)rotEncVal/100.0;
             }
           }
           break;
