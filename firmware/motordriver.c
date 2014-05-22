@@ -42,7 +42,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v1.0")
+#define FW_VERSION ("v1.1")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -128,21 +128,21 @@ typedef struct{
 
 typedef struct{
 
-  int16_t actualPosition;         /* always in steps */
-  int16_t desiredPosition;        /* always in steps */
-  int16_t opticalZeroPosition;    /* as offset from zero position in steps */
-  double stepError;
-  uint8_t isMoving;
-  uint8_t isTurnedOn;
-  uint8_t isMovingInfinite;
-  double gearRatio;                /* initially set to 60:18 */
-  double stepsPerFullRotation;     /* initially set to 400 */
-  double subSteps;                 /* could be 1, 2, 4, 8, 16 */
-  uint8_t stepUnit;               /* could be: step, degree, radian */
-  double stepMultiplier;           /* multiplies the default step just at manual operation */
-  uint16_t waitBetweenSteps;      /* in milliseconds */
-  uint16_t delayCounter;          /* counts the waited milliseconds */
-  uint8_t angularVelocity;        /* in seconds per full rotation */
+  int16_t  actualPosition;         /* always in steps */
+  int16_t  desiredPosition;        /* always in steps */
+  int16_t  opticalZeroPosition;    /* as offset from zero position in steps */
+  double   stepError;
+  uint8_t  isMoving;
+  uint8_t  isTurnedOn;
+  uint8_t  isMovingInfinite;
+  double   gearRatio;              /* initially set to 60:18 */
+  double   stepsPerFullRotation;   /* initially set to 400 */
+  double   subSteps;               /* could be 1, 2, 4, 8, 16 */
+  uint8_t  stepUnit;               /* could be: step, degree, radian */
+  double   stepMultiplier;         /* multiplies the default step just at manual operation */
+  uint16_t waitBetweenSteps;       /* in milliseconds */
+  uint16_t delayCounter;           /* counts the waited milliseconds */
+  uint8_t  angularVelocity;        /* in seconds per full rotation */
 
 }motorInfo;
 
@@ -390,10 +390,10 @@ char EEMEM IDNtext[IDN_STRING_LENGTH + 1];
 
 /* keep motor information in EEPROM */
 int16_t  EEMEM opticalZeroPositionEE[MAX_MOTOR+1];
-double    EEMEM gearRatioEE[MAX_MOTOR+1];
-double    EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
-double    EEMEM subStepsEE[MAX_MOTOR+1];
-double    EEMEM stepMultiplierEE[MAX_MOTOR+1];
+double   EEMEM gearRatioEE[MAX_MOTOR+1];
+double   EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
+double   EEMEM subStepsEE[MAX_MOTOR+1];
+double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 
@@ -1132,10 +1132,9 @@ double stepsToDegree(uint8_t mot, int16_t steps){
 
   double radian = 0.0f;
 
-  radian = (steps)
-                  *( (360.0f)/(motor[mot].gearRatio
-                              *motor[mot].subSteps
-                              *motor[mot].stepsPerFullRotation) );
+  radian = (steps) * ( (360.0f)/(motor[mot].gearRatio
+                                *motor[mot].subSteps
+                                *motor[mot].stepsPerFullRotation) );
 
   return radian;
 
@@ -1173,10 +1172,9 @@ double stepsToRadian(uint8_t mot, int16_t steps){
 
   double radian = 0.0f;
 
-  radian = (steps)
-                  *( (2.0f)/(motor[mot].gearRatio
-                            *motor[mot].subSteps
-                            *motor[mot].stepsPerFullRotation) );
+  radian = (steps) * ( (2.0f)/(motor[mot].gearRatio
+                              *motor[mot].subSteps
+                              *motor[mot].stepsPerFullRotation) );
 
   return radian;
 }
@@ -1422,7 +1420,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_OPTICAL_ZERO_POS:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
-        sprintf(menu.newDisplayValue[i], "%c%ds", c, motor[i].opticalZeroPosition);
+        sprintf(menu.newDisplayValue[i], "%c%dst", c, motor[i].opticalZeroPosition);
       }
       break;
 

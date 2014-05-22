@@ -29,9 +29,7 @@ Erklaerung:
 
 zum Befehlssatz (was noch so gut waere):
 
-- setzero (sagt 'dies ist jetzt die Nullposition', e.g. fuer Waveplate
-vs. Magnet)
-- setposzero XX YY (sagt Motor XX, dass die Nullposition bei YY ist)
+
 - setmem (setze im speicher zur position XX)
 -- z.B. setmem 3 0 90 180 90 a
 (dies ist der dritte Schritt im Program / setzt Motor 1 auf 0 Grad,
