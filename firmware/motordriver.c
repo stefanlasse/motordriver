@@ -247,8 +247,9 @@ ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between t
 ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two single steps  */
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
+ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
 
-#define TOTAL_NUMBER_OF_COMMANDS 25
+#define TOTAL_NUMBER_OF_COMMANDS 26
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -258,7 +259,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_15_, &cmd_16_, &cmd_17_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
-                                              &cmd_24_
+                                              &cmd_24_, &cmd_25_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -2730,6 +2731,12 @@ RESET:
         cli();
         prepareReset();
         goto RESET;
+        break;
+
+      case 0x99:    /* STOPALL */
+        for(i = 0; i <= MAX_MOTOR; i++){
+          motor[i].desiredPosition = motor[i].actualPosition;
+        }
         break;
 
       default:
