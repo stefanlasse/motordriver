@@ -1489,7 +1489,6 @@ void updateMenu(void){
   menuPrompt = menu.currentDisplayedMenu;
   menuState  = menu.currentMenuMode;
 
-  /* check if we are in menu scrolling or in value changing mode */
   if(menuState == MENU_SCROLL_MODE){
     /* so here we want to scroll through the menu */
 
@@ -1502,9 +1501,13 @@ void updateMenu(void){
     menu.newDisplayedMenu = (uint8_t)menuPrompt;
 
     /* or enter the MENU_CHANGE_MODE */
-    if(getButtonEvent() == BUTTON_ROT_ENC){
+    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor == 0){
       menu.newMenuMode = MENU_CHANGE_MODE;
     }
+    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor != 0){
+      menu.newMenuMode = MENU_VALUE_CHANGE;
+    }
+
   }
 
   if((menuState == MENU_CHANGE_MODE) || (menuState == MENU_VALUE_CHANGE)){
@@ -1710,6 +1713,7 @@ void updateMenu(void){
           break;
       }
     }
+
   }
 
   buttonState.readyToProcess = 0;
