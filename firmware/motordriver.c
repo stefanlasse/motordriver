@@ -341,6 +341,7 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
 #define MENU_CHANGE_MODE    1 /* change to value view */
 #define MENU_SCROLL_MODE    2 /* scroll through the menu */
 #define MENU_VALUE_CHANGE   3 /* change a selected value */
+#define MENU_FAST_MOVE_MODE 4 /* moves a motor 10 times faster */
 
 #define NUMBER_DISPLAY_MENU_STRINGS   2
 #define DISPLAY_MENU_STRING_LENGTH    17
@@ -352,7 +353,8 @@ typedef struct{
 
   uint8_t newDisplayedMenu;
   uint8_t currentDisplayedMenu;
-  uint8_t newMenuMode;            /* either in MENU_CHANGE_MODE or in MENU_SCROLL_MODE */
+  uint8_t newMenuMode;
+  uint8_t fastMovingMode;
   uint8_t currentMenuMode;
   uint8_t selectedMotor;          /* keep the selected motor for value changing */
   char**  currentDisplayValue;    /* for values to be changed */
@@ -511,6 +513,7 @@ void initDataStructs(void){
   menu.newDisplayedMenu = MENU_MAIN;
   menu.currentDisplayedMenu = 42;
   menu.newMenuMode = MENU_SCROLL_MODE;
+  menu.fastMovingMode = OFF;
   menu.currentMenuMode = 42;
   menu.selectedMotor = NO_MOTOR;
   /* strings are initialized in main */
@@ -1540,6 +1543,10 @@ void updateMenu(void){
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
+      case BUTTON_ROT_ENC:
+        menu.fastMovingMode ^= 1;
+        break;
+
       case BUTTON_MENUESCAPE:
         /* or get back to the MENU_SCROLL_MODE */
         menu.newMenuMode = MENU_SCROLL_MODE;
@@ -1568,15 +1575,26 @@ void updateMenu(void){
             if(menu.selectedMotor & (1 << i)){
               switch(motor[i].stepUnit){
                 case MOTOR_STEP_UNIT_STEP:
-                  motor[i].desiredPosition += (int16_t)rotEncVal;
+                  if(menu.fastMovingMode){
+                  motor[i].desiredPosition += ((int16_t)rotEncVal)*100;
+                  }
+                  else{
+                    motor[i].desiredPosition += (int16_t)rotEncVal;
+                  }
                   break;
 
                 case MOTOR_STEP_UNIT_DEGREE:
-                  degreeToSteps(i, (float)rotEncVal, motor[i].stepMultiplier);
+                  if(menu.fastMovingMode){
+                    degreeToSteps(i, ((float)rotEncVal)*10.0, motor[i].stepMultiplier);
+                  }
+                  else{
+                    degreeToSteps(i, (float)rotEncVal, motor[i].stepMultiplier);
+                  }
                   break;
 
                 case MOTOR_STEP_UNIT_RADIAN:
                   /* default step is pi/8 */
+                  /* pi/8 is fast enough, so no fast moving mode here */
                   radiansToSteps(i, (float)(rotEncVal)*0.125, motor[i].stepMultiplier);
                   break;
 
@@ -1737,7 +1755,7 @@ void initManualOperatingButtons(void){
    */
 
   TCCR0A |= (1<<WGM01);   /* enable CTC */
-  OCR0A   = 200;           /* (97+1)*51.2 us --> interrupt every 5.0176 ms */
+  OCR0A   = 200;          /* (97+1)*51.2 us --> interrupt every 5.0176 ms */
   TIMSK0 |= (1<<OCIE0A);  /* enable interrupt */
   TCNT0   = 0;
 
