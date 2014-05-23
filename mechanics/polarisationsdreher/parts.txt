@@ -1,0 +1,14 @@
+Mädler:
+12 Stück	Artikelnr.: 16021800		Zahnriemenrad aus Aluminium Profil T2,5 18 Zähne für Riemenbreite 6mm 16 T2,5/18-2
+2 Stück		Artikelnr.: 16096000		Zahnwelle Profil T2,5 60 Zähne Länge 160mm Material Aluminium
+12 Stück	Artikelnr.: 16060600		PU-Zahnriemen Profil T2,5 Breite 6mm Wirklänge 230 Zähnezahl 92 6 T2,5/230
+12 Stück	Artikelnr.: 61805-2RS-MAE	Mädler Rillenkugellager einreihig Innen-Ø 25mm Außen-Ø 37mm Breite 7mm beidseitig abgedichtet 
+12 Stück	Artikelnr.: 66070122		Drehknopf 726.1 Ausf.1 Form A ø22
+
+Nanotec:
+12 Stück	Artikelnr.: ST4209S0404-B	High Resolution Schrittmotor – Nema 17
+										2-Phasen High-Torque Schrittmotor in Nema 17 (42mm) Baugröße
+										0,9° Schrittwinkel (Vollschritt)
+										Strom: 0,42 A
+										Haltemoment: 17,6 Ncm
+										Welle: double
