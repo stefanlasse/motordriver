@@ -38,7 +38,7 @@ class Motordriver():
   def __init__(self, interface='/dev/ttyUSB0'):
     self.ser = serial.Serial(
     	port = interface,
-    	baudrate = 57600,
+    	baudrate = 19200,
     	parity = serial.PARITY_NONE,
     	stopbits = serial.STOPBITS_ONE,
     	bytesize = serial.EIGHTBITS
@@ -96,19 +96,19 @@ class Motordriver():
         ack = self.ser.read(1)
     
     if maxtries == 9:
-      print "unable to send the command " + cmd
+      print "unable to send command: " + cmd
     
     return
   
   # --------------------------------------------------------------------------
   def __readResponse(self):
-    out = ''    
+    out = ""    
     while self.ser.inWaiting() > 0:
       c = self.ser.read(1)
       if c != '\n':
         out += c
     
-    return
+    return out.decode("utf-8")
     
   # --------------------------------------------------------------------------
   # command implementation
@@ -190,7 +190,7 @@ class Motordriver():
     if self.__checkMotor(motor):
       self.__sendCommand("ISMOVING " + str(motor))
       resp = self.__readResponse()
-      if resp == '1':
+      if resp == "1":
         return True
       else:
         return False
