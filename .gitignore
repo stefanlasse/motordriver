@@ -7,4 +7,6 @@
 *.s
 *.srec
 *~
+*.pyc
+.pydevproject
 .project
