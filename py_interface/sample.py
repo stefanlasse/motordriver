@@ -11,8 +11,8 @@ import time
 # get connection to the motordriver
 driver = Motordriver(interface = '/dev/ttyUSB0')
 
-QWP = 0 # motor 0 is the one with the quarter wave plate
-HWP = 2 # motor 2 is the one with the half wave plate
+QWP = 0   # motor 0 is the one with the quarter wave plate
+HWP = 2   # motor 2 is the one with the half wave plate
 
 def measureStokesParameter():
   # first move the motors to zero position
@@ -36,7 +36,7 @@ def measureStokesParameter():
     # zero positions
     pass
   
-  time.sleep(3)
+  time.sleep(3) # give some time for power meter to settle
   # measure power here: S2 = P(QWP) - P(HWP)
   print "got S2"
   
@@ -47,12 +47,20 @@ def measureStokesParameter():
     # zero positions
     pass
   
-  time.sleep(3)
+  time.sleep(3) # give some time for power meter to settle
   # measure power here: S3 = P(QWP) - P(HWP)
   print "got S3"
+  return
 
-for i in range(3):
-  measureStokesParameter()
+def getTheIDfromDevice():
+  return driver.getIDN()
+
+for i in range(1,10000001):
+  print "Meas " + str(i) + " " + getTheIDfromDevice()
+  #driver.setWaitTimeBetweenSteps(i % 4, i % 20);
+  #measureStokesParameter()
+  time.sleep(0.2)
+  print " "
 
 
 
