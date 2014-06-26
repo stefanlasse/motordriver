@@ -138,7 +138,7 @@ typedef struct{
   double   gearRatio;              /* initially set to 60:18 */
   double   stepsPerFullRotation;   /* initially set to 400 */
   double   subSteps;               /* could be 1, 2, 4, 8, 16 */
-  uint8_t  stepUnit;               /* could be: step, degree, radian */
+  int8_t  stepUnit;                /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
@@ -248,6 +248,7 @@ ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two 
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
 ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
+
 
 #define TOTAL_NUMBER_OF_COMMANDS 26
 
@@ -381,6 +382,7 @@ volatile button buttonState;            /* information on the user interface */
 volatile rotaryEncoder rotEnc;
 
 
+
 /* ---------------------------------------------------------------------
     EEPROM memory
  --------------------------------------------------------------------- */
@@ -456,7 +458,7 @@ char* commandGetOptZeroPos(char* param0);
 void  commandSetOptZeroPos(char* param0, char* param1);
 char* commandGetGearRatio(char* param0);
 void  commandSetGearRatio(char* param0, char* param1);
-char* commandGetFullRotation(char* param0);
+void commandGetFullRotation(char* param0);
 void  commandSetFullRotation(char* param0, char* param1);
 char* commandGetSubSteps(char* param0);
 void  commandSetSubSteps(char* param0, char* param1);
@@ -571,6 +573,44 @@ void initADC(void){
 
   return;
 }
+
+/* ---------------------------------------------------------------------
+   initialize buffers
+ --------------------------------------------------------------------- */
+void initBuffers(void){
+
+  uint8_t i,j;
+
+  /* command parameters */
+  for(j = 0; j < PARAMETER_LENGTH; j++){
+    commandParam[i][j] = 0;
+  }
+
+  /* buffers for the display */
+  for(j = 0; j < DISPLAY_VALUE_STRING_LENGTH; j++){
+    menu.currentDisplayValue[i][j] = 0;
+    menu.newDisplayValue[i][j]     = 0;
+  }
+
+  for(j = 0; j < DISPLAY_MENU_STRING_LENGTH; j++){
+    menu.currentMenuText[i][j] = 0;
+    menu.newMenuText[i][j]     = 0;
+  }
+
+  for(i = 0; i < DISPLAY_BUFFER_SIZE; i++){
+    displayBuffer[i] = 0;
+  }
+
+  /* serial RX and TX buffers */
+  for(i = 0; i < SERIAL_BUFFERSIZE; i++){
+    txString.buffer[i] = 0;
+    rxString.buffer[i] = 0;
+  }
+
+  return;
+}
+
+
 
 /* =====================================================================
     functionality implementation
@@ -1598,22 +1638,12 @@ void updateMenu(void){
         case MENU_CHANGE_STEP_UNIT:   /* change step units */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              switch(motor[i].stepUnit){
-                case MOTOR_STEP_UNIT_STEP:
-                  motor[i].stepUnit = MOTOR_STEP_UNIT_DEGREE;
-                  break;
-
-                case MOTOR_STEP_UNIT_DEGREE:
-                  motor[i].stepUnit = MOTOR_STEP_UNIT_RADIAN;
-                  break;
-
-                case MOTOR_STEP_UNIT_RADIAN:
-                  motor[i].stepUnit = MOTOR_STEP_UNIT_STEP;
-                  break;
-
-                default:
-                  asm("nop");
-                  break;
+              motor[i].stepUnit += rotEncVal;
+              if(motor[i].stepUnit < 0){
+                motor[i].stepUnit = 2;
+              }
+              if(motor[i].stepUnit > 2){
+                motor[i].stepUnit = 0;
               }
             }
           }
@@ -1623,7 +1653,7 @@ void updateMenu(void){
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               motor[i].waitBetweenSteps += rotEncVal;
-              asm("nop");
+
               if(motor[i].waitBetweenSteps < 1){
                 /* wait time is at least 1 ms */
                 motor[i].waitBetweenSteps = 1;
@@ -1686,22 +1716,12 @@ void updateMenu(void){
         case MENU_CONST_ANGULAR_SPEED:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              switch(motor[i].angularVelocity){
-                case MOTOR_MOVE_INFINITE_STOP:
-                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_CW;
-                  break;
-
-                case MOTOR_MOVE_INFINITE_CW:
-                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_CCW;
-                  break;
-
-                case MOTOR_MOVE_INFINITE_CCW:
-                  motor[i].angularVelocity = MOTOR_MOVE_INFINITE_STOP;
-                  break;
-
-                default:
-                  asm("nop");
-                  break;
+              motor[i].angularVelocity += rotEncVal;
+              if(motor[i].angularVelocity < 0){
+                motor[i].angularVelocity = 2;
+              }
+              if(motor[i].angularVelocity > 2){
+                motor[i].angularVelocity = 0;
               }
               setConstSpeed(i, motor[i].angularVelocity);
             }
@@ -1827,19 +1847,22 @@ int8_t getRotaryEncoderEvent(void){
 uint8_t parseCommand(void){
 
   uint8_t commandCode = 0x80; /* initialize with "no command" */
-  int8_t noOfOpts = 0;
-  int8_t i,j;
+  uint8_t noOfOpts = 0;
+  uint8_t i = 0;
+  uint8_t j = 0;
   command *cmdPtr;
   char *cmd;
 
-  /* prepare parameter buffer */
-  for(i = 0; i < NUMBER_OF_PARAMETERS; i++){
-    for(j = 0; j < PARAMETER_LENGTH; j++){
-      commandParam[i][j] = 0;
+  if(rxString.readyToProcess){
+    /* prepare parameter buffer */
+    for(i = 0; i < NUMBER_OF_PARAMETERS; i++){
+      for(j = 0; j < PARAMETER_LENGTH; j++){
+        commandParam[i][j] = 0;
+      }
     }
-  }
 
-  if(rxString.readyToProcess){  /* new command ready for parsing */
+    //sendText(rxString.buffer);
+
     /* extract command and get cmdCode */
     rxString.buffer = strtok(rxString.buffer, ALLOWED_CMD_DELIMITERS);
 
@@ -1862,7 +1885,9 @@ uint8_t parseCommand(void){
     }
 
     /* parsing finished, reset rxString */
-    strcpy(rxString.buffer, "0\0");
+    for(i = 0; i < SERIAL_BUFFERSIZE; i++){
+      rxString.buffer[i] = 0;
+    }
     rxString.charCount = 0;
     rxString.readyToProcess = 0;
   }
@@ -1888,16 +1913,18 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
   if(strcmp(param2, "steps") == 0){
     motor[i].desiredPosition = (int16_t)strtol(param1, (char **)NULL, 10);
   }
-
-  if(strcmp(param2, "deg") == 0){
+  else if(strcmp(param2, "deg") == 0){
     actMotorPos = stepsToDegree(i, motor[i].actualPosition);
     posDiff = atof(param1) - actMotorPos;
     degreeToSteps(i, posDiff, 1.0);
   }
-  if(strcmp(param2, "pi") == 0){
+  else if(strcmp(param2, "pi") == 0){
     actMotorPos = stepsToRadian(i, motor[i].actualPosition);
     posDiff = atof(param1) - actMotorPos;
     radiansToSteps(i, posDiff, 1.0);
+  }
+  else{
+    sendText("ERROR: else");
   }
 
   return;
@@ -2110,7 +2137,7 @@ void commandSetGearRatio(char* param0, char* param1){
     return;
   }
   else{
-    val = atof(param1);
+    val = (float)atof(param1);
     motor[i].opticalZeroPosition = val;
   }
 
@@ -2120,7 +2147,7 @@ void commandSetGearRatio(char* param0, char* param1){
 /* ---------------------------------------------------------------------
     returns the steps per full rotation w/o substeps
  --------------------------------------------------------------------- */
-char* commandGetFullRotation(char* param0){
+void commandGetFullRotation(char* param0){
 
   uint8_t i = 0;
 
@@ -2133,7 +2160,8 @@ char* commandGetFullRotation(char* param0){
     sprintf(txString.buffer, "%.0f", motor[i].stepsPerFullRotation);
   }
 
-  return txString.buffer;
+  sendText(txString.buffer);
+  return;
 }
 
 /* ---------------------------------------------------------------------
@@ -2152,7 +2180,7 @@ void commandSetFullRotation(char* param0, char* param1){
     return;
   }
   else{
-    val = atof(param1);
+    val = (double)atof(param1);
     motor[i].stepsPerFullRotation = val;
   }
 
@@ -2194,7 +2222,7 @@ void commandSetSubSteps(char* param0, char* param1){
     return;
   }
   else{
-    val = atof(param1);
+    val = (double)atof(param1);
     motor[i].subSteps = val;
   }
 
@@ -2236,7 +2264,7 @@ void commandSetWaitTime(char* param0, char* param1){
     return;
   }
   else{
-    val = atof(param1);
+    val = (uint16_t)atoi(param1);
     motor[i].waitBetweenSteps = val;
   }
 
@@ -2350,12 +2378,10 @@ ISR(USART0_RX_vect){
 
       /* here the command is completely received */
       sendChar(0x06); /* therefore send ACK */
-      sendChar('\n');
     }
   }
   else{ /* actual command in buffer is not processed yet */
     sendChar(0x15);   /* send a NAK */
-    sendChar('\n');
   }
 
   return;
@@ -2532,16 +2558,13 @@ ISR(TIMER2_COMPA_vect){
 ====================================================================== */
 int main(void){
 
+  uint8_t i;
   uint8_t commandCode;
-  uint8_t i,j;
 
   /* initialize command parameter list */
   commandParam = (char**)malloc(NUMBER_OF_PARAMETERS * sizeof(char*));
   for(i = 0; i < NUMBER_OF_PARAMETERS; i++){
     commandParam[i] = (char*)malloc(PARAMETER_LENGTH * sizeof(char));
-    for(j = 0; j < PARAMETER_LENGTH; j++){
-      commandParam[i][j] = 0;
-    }
   }
 
   /* initialize menu strings */
@@ -2550,10 +2573,6 @@ int main(void){
   for(i = 0; i < NUMBER_DISPLAY_VALUE_STRINGS; i++){
     menu.currentDisplayValue[i] = (char*)malloc(DISPLAY_VALUE_STRING_LENGTH * sizeof(char));
     menu.newDisplayValue[i]     = (char*)malloc(DISPLAY_VALUE_STRING_LENGTH * sizeof(char));
-    for(j = 0; j < DISPLAY_VALUE_STRING_LENGTH; j++){
-      menu.currentDisplayValue[i][j] = 0;
-      menu.newDisplayValue[i][j]     = 0;
-    }
   }
 
   menu.currentMenuText     = (char**)malloc(NUMBER_DISPLAY_MENU_STRINGS * sizeof(char*));
@@ -2561,23 +2580,15 @@ int main(void){
   for(i = 0; i < NUMBER_DISPLAY_MENU_STRINGS; i++){
     menu.currentMenuText[i] = (char*)malloc(DISPLAY_MENU_STRING_LENGTH * sizeof(char));
     menu.newMenuText[i]     = (char*)malloc(DISPLAY_MENU_STRING_LENGTH * sizeof(char));
-    for(j = 0; j < DISPLAY_MENU_STRING_LENGTH; j++){
-      menu.currentMenuText[i][j] = 0;
-      menu.newMenuText[i][j]     = 0;
-    }
   }
 
   /* initialize TX and RX buffers for USART serial interface */
   rxString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
   txString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
 
-  initUSART();
-
   /* initialize displayBuffer */
   displayBuffer = (char*)malloc(DISPLAY_BUFFER_SIZE * sizeof(char));
-  for(i = 0; i < DISPLAY_BUFFER_SIZE; i++){
-    displayBuffer[i] = 0;
-  }
+
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
@@ -2585,13 +2596,17 @@ RESET:
   initADC();
   initMotorDelayTimer();
   initManualOperatingButtons();
+  initBuffers();
+  initUSART();
+
+  /* TODO: detect motors */
 
   /* turn on all motors */
   for(i = 0; i <= MAX_MOTOR; i++){
     setMotorState(MOTOR0 + i, ON);
   }
 
-  loadConfigFromEEPROM();
+  //loadConfigFromEEPROM();
 
   updateDisplay();
 
@@ -2685,7 +2700,7 @@ RESET:
         break;
 
       case 0x91:    /* GETFULLROT */
-        sendText(commandGetFullRotation(commandParam[0]));
+        commandGetFullRotation(commandParam[0]);
         break;
 
       case 0x92:    /* SETFULLROT */
