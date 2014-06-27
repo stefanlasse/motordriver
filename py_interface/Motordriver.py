@@ -33,23 +33,30 @@ class Motordriver():
   
   CW     = "CW"
   CCW    = "CCW"
+  STOP   = "STOP"
   
   # --------------------------------------------------------------------------
   def __init__(self, interface='/dev/ttyUSB0'):
     self.ser = serial.Serial(
     	port = interface,
     	baudrate = 57600,
+      bytesize = serial.EIGHTBITS,
     	parity = serial.PARITY_NONE,
     	stopbits = serial.STOPBITS_ONE,
-    	bytesize = serial.EIGHTBITS
+    	timeout = 5,      
+      xonxoff = 0,
+      rtscts = 0,
+      dsrdtr = 0,
+      writeTimeout = 5
     )
     self.ser.close()
     self.ser.open()
-    self.ser.isOpen()
+    time.sleep(0.5)
     
   # --------------------------------------------------------------------------
   def __del__(self):
-    self.ser.close()
+    if self.ser.isOpen():
+      self.ser.close()
     
   # --------------------------------------------------------------------------
   # helpers
@@ -57,6 +64,9 @@ class Motordriver():
   
   # --------------------------------------------------------------------------
   def __checkMotor(self, motor):
+    if not isinstance(motor, int):
+      print "error: motor number must be an integer."
+      return false
     if motor > 3:
       print "maximum motor is 3"
       return False
@@ -79,14 +89,14 @@ class Motordriver():
   # --------------------------------------------------------------------------
   
   # --------------------------------------------------------------------------
-  def __sendCommand(self, cmd):
-    
-    ack = 'A'
+  def __sendCommand(self, cmd):    
+    ack = "A"
     maxtries = 0
+    self.ser.flushOutput()
     
     while ord(ack) != 6 and maxtries < 10:
-      time.sleep(0.05)
       self.ser.write(cmd + '\n')
+      self.ser.flush()
       time.sleep(0.05)
       maxtries += 1
       while self.ser.inWaiting() == 0:
@@ -94,10 +104,11 @@ class Motordriver():
       
       if self.ser.inWaiting() > 0:
         ack = self.ser.read(1)
-    
+        
     if maxtries == 9:
-      print "unable to send command: " + cmd
+      print "error: unable to send command: " + cmd
     
+    self.ser.flushOutput()
     return
   
   # --------------------------------------------------------------------------
@@ -108,15 +119,15 @@ class Motordriver():
       if c != '\n':
         out += c
     
+    self.ser.flushInput()
     return out.decode("utf-8")
     
   # --------------------------------------------------------------------------
   # command implementation
   # --------------------------------------------------------------------------
-  
+
   # --------------------------------------------------------------------------
   def reset(self):
-    # first stop all motor movements
     self.__sendCommand("STOPALL")
     self.__sendCommand("*RST")
     return
@@ -128,6 +139,10 @@ class Motordriver():
   
   # --------------------------------------------------------------------------
   def setIDN(self, id):
+    if not isinstance(id, basestring):
+      print "ID is not a string."
+      return
+    
     if len(id) > 20:
       print "IDN too long. max: 20 characters"
       return
@@ -141,6 +156,14 @@ class Motordriver():
     
   # --------------------------------------------------------------------------
   def moveToAbsolutePosition(self, motor=0, pos=0, unit=DEGREE):
+    if unit is self.STEPS and not isinstance(pos, int):
+      print "err: unit is STEPS, so position must be an integer"
+      return
+    
+    if pos < 0:
+      print "position must be a positive value"
+      return
+    
     if self.__checkMotor(motor) and self.__checkUnit(unit):
       cmd = "MOVEABS " + str(motor) + " " + str(pos) + " " + unit
       self.__sendCommand(cmd)
@@ -148,6 +171,10 @@ class Motordriver():
     
   # --------------------------------------------------------------------------
   def moveRelative(self, motor=0, pos=0, unit=DEGREE):
+    if unit is self.STEPS and not isinstance(pos, int):
+      print "err: unit is STEPS, so position must be an integer"
+      return
+    
     if self.__checkMotor(motor) and self.__checkUnit(unit):
       cmd = "MOVEREL " + str(motor) + " " + str(pos) + " " + unit
       self.__sendCommand(cmd)
@@ -162,13 +189,13 @@ class Motordriver():
   # --------------------------------------------------------------------------
   def turnOnMotor(self, motor=0):
     if self.__checkMotor(motor):
-      self.__sendCommand("ENABLE " + str(motor) + " " + ON)
+      self.__sendCommand("ENABLE " + str(motor) + " " + self.ON)
     return
 
   # --------------------------------------------------------------------------
   def turnOffMotor(self, motor=0):
     if self.__checkMotor(motor):
-      self.__sendCommand("ENABLE " + str(motor) + " " + OFF)
+      self.__sendCommand("ENABLE " + str(motor) + " " + self.OFF)
 
   # --------------------------------------------------------------------------
   def getPosition(self, motor=0, unit=DEGREE):
@@ -179,11 +206,13 @@ class Motordriver():
 
   # --------------------------------------------------------------------------
   def saveCurrentConfiguration(self):
-    pass
+    self.__sendCommand("SAVECONF")
+    return
   
   # --------------------------------------------------------------------------
   def loadSavedConfiguration(self):
-    pass
+    self.__sendCommand("LOADCONF")
+    return
   
   # --------------------------------------------------------------------------
   def isMoving(self, motor=0):
@@ -197,8 +226,11 @@ class Motordriver():
     return
 
   # --------------------------------------------------------------------------
-  def getAnalogValue(self):
-    pass
+  def getAnalogValue(self, channel=0):
+    if self.__checkMotor(channel):
+      self.__sendCommand("GETANALOG " + str(channel))
+      return self.__readResponse()
+    return    
   
   # --------------------------------------------------------------------------
   def getOpticalZeroPosition(self, motor=0):
@@ -209,6 +241,10 @@ class Motordriver():
   
   # --------------------------------------------------------------------------
   def setOpticalZeroPosition(self, motor=0, position=0):
+    if not isinstance(position, int):
+      print "optical zero position must be given in steps, integer."
+      return
+    
     if self.__checkMotor(motor):
       cmd = "SETOPTZEROPOS " + str(motor) + " " + str(position)
       self.__sendCommand(cmd)
@@ -237,6 +273,14 @@ class Motordriver():
 
   # --------------------------------------------------------------------------
   def setStepsPerFullRotation(self, motor=0, steps=400):
+    if not isinstance(steps, int):
+      print "must be given as integer number"
+      return
+    
+    if steps != 200 and steps != 400:
+      print "steps must be either 200 or 400."
+      return
+    
     if self.__checkMotor(motor):
       cmd = "SETFULLROT " + str(motor) + " " + str(steps)
       self.__sendCommand(cmd)
@@ -251,6 +295,18 @@ class Motordriver():
 
   # --------------------------------------------------------------------------
   def setSubSteps(self, motor=0, substeps=4):
+    if not isinstance(substeps, int):
+      print "must be given as integer number"
+      return
+    
+    if (substeps and (substeps - 1)):
+      print "substeps must be a power of two"
+      return
+    
+    if substeps < 1 or substeps > 16:
+      print "substeps must be a positive number"
+      return
+    
     if self.__checkMotor(motor):
       cmd = "SETSUBSTEPS " + str(motor) + " " + str(substeps)
       self.__sendCommand(cmd)
@@ -259,12 +315,20 @@ class Motordriver():
   # --------------------------------------------------------------------------
   def getWaitTimeBetweenSteps(self, motor=0):
     if self.__checkMotor(motor):
-      self.__sendCommand("GETWAITTIME " + str(motor))
+      self.__sendCommand("GETWAITTIME")
       return self.__readResponse()
     return
 
   # --------------------------------------------------------------------------
   def setWaitTimeBetweenSteps(self, motor=0, waittime=3):
+    if not isinstance(waittime, int):
+      print "waittime must be given as integer number"
+      return
+    
+    if waittime < 1:
+      print "waittime must be >= 1"
+      return
+    
     if self.__checkMotor(motor):
       cmd = "SETWAITTIME " + str(motor) + " " + str(waittime)
       self.__sendCommand(cmd)
@@ -272,6 +336,10 @@ class Motordriver():
 
   # --------------------------------------------------------------------------
   def setConstAngularVelocity(self, motor=0, direction=CW, time=10.0):
+    if time < 5.0:
+      print "time must be >= 5.0 seconds"
+      return
+      
     if self.__checkMotor(motor):
       cmd = "SETCONSTSPEED " + str(motor) + " " + direction + " " + str(time)
       self.__sendCommand(cmd)

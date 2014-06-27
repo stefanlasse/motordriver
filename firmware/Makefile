@@ -22,10 +22,10 @@ clean:
 	rm -f $(FILENAME).elf $(FILENAME).s $(FILENAME).lst $(FILENAME).hex $(FILENAME).bin $(FILENAME).srec
 
 $(FILENAME).elf: $(FILENAME).c
-	$(CC) -g -mmcu=$(CPUTYPE) -w $(OPTIMIZE) $(PRINTF_LIB_FLOAT) -o $(FILENAME).elf $(FILENAME).c
+	$(CC) -g --std=c99 -mmcu=$(CPUTYPE) -w $(OPTIMIZE) $(PRINTF_LIB_FLOAT) -o $(FILENAME).elf $(FILENAME).c
 
 $(FILENAME).s: $(FILENAME).c
-	$(CC) -mmcu=$(CPUTYPE) -w  $(OPTIMIZE) $(PRINTF_LIB_FLOAT) -S $(FILENAME).c
+	$(CC) --std=c99 -mmcu=$(CPUTYPE) -w  $(OPTIMIZE) $(PRINTF_LIB_FLOAT) -S $(FILENAME).c
 
 $(FILENAME).lst: $(FILENAME).elf
 	$(OBJDUMP) -h -S $(FILENAME).elf >$(FILENAME).lst

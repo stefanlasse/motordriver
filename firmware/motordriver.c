@@ -31,6 +31,7 @@
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <util/delay.h>
+#include <util/atomic.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,7 +43,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v1.1")
+#define FW_VERSION ("v1.2")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -375,6 +376,7 @@ static const char firmwareVersion[] = FW_VERSION;
 volatile motorInfo motor[MAX_MOTOR+1];  /* we got 4 motors [0..3] */
 volatile serialString rxString;         /* for a received command */
 volatile serialString txString;         /* for information to send */
+volatile serialString commandString;
 volatile statusVariables status;        /* status variables */
 volatile analog adc;                    /* ADC information */
 volatile menuInfo menu;                 /* information about the menu */
@@ -458,7 +460,7 @@ char* commandGetOptZeroPos(char* param0);
 void  commandSetOptZeroPos(char* param0, char* param1);
 char* commandGetGearRatio(char* param0);
 void  commandSetGearRatio(char* param0, char* param1);
-void commandGetFullRotation(char* param0);
+char* commandGetFullRotation(char* param0);
 void  commandSetFullRotation(char* param0, char* param1);
 char* commandGetSubSteps(char* param0);
 void  commandSetSubSteps(char* param0, char* param1);
@@ -642,6 +644,8 @@ void sendText(char *c){
   /* send LF after finishing text sending */
   sendChar('\n');
 
+  memset(txString.buffer, 0, SERIAL_BUFFERSIZE);
+
   return;
 }
 
@@ -672,7 +676,6 @@ void setMotorState(uint8_t mot, uint8_t state){
 
   /* set enable bit as output */
   DDRA |= (1 << (mot + 4));
-  asm("nop");   /* for sync */
 
   if(state == ON){
     PORTA &= ~(1 << (mot + 4));   /* delete pull-up */
@@ -858,7 +861,7 @@ uint16_t getADCvalue(uint8_t sensPin){
   for(i = 0; i < adc.numberOfMeasurements; i++){
     ADCSRA |= (1<<ADSC);
     while(ADCSRA & (1<<ADSC)){
-      asm("nop");
+      ;
     }
     lowByte = ADCL;
     highByte = ADCH;
@@ -1245,7 +1248,6 @@ void setConstSpeed(uint8_t i, uint8_t state){
       break;
 
     default:
-      asm("nop");
       break;
   }
 
@@ -1306,7 +1308,6 @@ void updateDisplay(void){
       break;
 
     default:
-      asm("nop");
       break;
   }
 
@@ -1480,7 +1481,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     default:  /* in case of fire ;-) */
-      asm("nop");
       break;
   }
 
@@ -1549,7 +1549,6 @@ void updateMenu(void){
     buttonVal = getButtonEvent();
     switch(buttonVal){
       case NO_BUTTON:
-        asm("nop");
         break;
 
       case BUTTON_MOTOR0:
@@ -1584,7 +1583,6 @@ void updateMenu(void){
         break;
 
       default:
-        asm("nop");
         break;
     }
   }
@@ -1684,7 +1682,6 @@ void updateMenu(void){
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               motor[i].subSteps += rotEncVal;
-              asm("nop");
               if(motor[i].subSteps < 1){
                 motor[i].subSteps = 1;
               }
@@ -1729,11 +1726,9 @@ void updateMenu(void){
           break;
 
         default:  /* in case of fire ;-) */
-          asm("nop");
           break;
       }
     }
-
   }
 
   buttonState.readyToProcess = 0;
@@ -1771,7 +1766,6 @@ void initManualOperatingButtons(void){
   TCCR0B |= (1<<CS02)|(1<<CS00);  /* prescaler = 1024 --> 51.2 us per cycle */
 
   return;
-
 }
 
 /* ---------------------------------------------------------------------
@@ -1825,13 +1819,12 @@ int8_t getRotaryEncoderEvent(void){
 
   int8_t steps = 0;
 
-  if(rotEnc.readyToProcess){
-    cli();
-    steps = rotEnc.steps;
-    rotEnc.steps = 0;
-    sei();
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    if(rotEnc.readyToProcess){
+      steps = rotEnc.steps;
+      rotEnc.steps = 0;
+    }
   }
-
   return steps;
 }
 
@@ -1840,6 +1833,24 @@ int8_t getRotaryEncoderEvent(void){
 /* =====================================================================
     parser functions
 ====================================================================== */
+
+/* ---------------------------------------------------------------------
+    copy command to internal buffer
+ --------------------------------------------------------------------- */
+void copyRXstring(void){
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    memcpy(commandString.buffer, rxString.buffer, SERIAL_BUFFERSIZE);
+    commandString.readyToProcess = 1;
+
+    memset(rxString.buffer, 0, SERIAL_BUFFERSIZE);
+    rxString.charCount = 0;
+    rxString.readyToProcess = 0;
+  }
+
+  return;
+}
+
 
 /* ---------------------------------------------------------------------
     returns the command code and fills the parameter list
@@ -1851,45 +1862,33 @@ uint8_t parseCommand(void){
   uint8_t i = 0;
   uint8_t j = 0;
   command *cmdPtr;
-  char *cmd;
+  char *token;
 
-  if(rxString.readyToProcess){
-    /* prepare parameter buffer */
-    for(i = 0; i < NUMBER_OF_PARAMETERS; i++){
-      for(j = 0; j < PARAMETER_LENGTH; j++){
-        commandParam[i][j] = 0;
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    if(commandString.readyToProcess){
+      /* extract command and get cmdCode */
+      token = strtok(commandString.buffer, ALLOWED_CMD_DELIMITERS);
+
+      for(i = 0; i < TOTAL_NUMBER_OF_COMMANDS; i++){            /* loop over all commands */
+        cmdPtr = (command*)pgm_read_word(&commandList[i]);      /* pointer to struct in flash */
+        strcpy_P(commandParam[0], pgm_read_word(&cmdPtr->cmd)); /* contents of command code in flash */
+
+        if(strcmp(token, commandParam[0]) == 0){
+          /* found a known command */
+          commandCode = (uint8_t)pgm_read_byte(&cmdPtr->cmdCode);
+          noOfOpts = (int8_t)pgm_read_byte(&cmdPtr->numberOfOptions);
+        }
       }
-    }
 
-    //sendText(rxString.buffer);
-
-    /* extract command and get cmdCode */
-    rxString.buffer = strtok(rxString.buffer, ALLOWED_CMD_DELIMITERS);
-
-    for(i = 0; i < TOTAL_NUMBER_OF_COMMANDS; i++){        /* loop over all commands */
-      cmdPtr = (command*)pgm_read_word(&commandList[i]);  /* pointer to struct in flash */
-      cmd = (char*)pgm_read_word(&cmdPtr->cmd);           /* contents of command code in flash */
-
-      if(strcmp_P(rxString.buffer, cmd) == 0){
-        /* found a known command */
-        commandCode = (uint8_t)pgm_read_byte(&cmdPtr->cmdCode);
-        noOfOpts = (int8_t)pgm_read_byte(&cmdPtr->numberOfOptions);
+      /* now parse the command parameters into tokens */
+      for(i = 1; i <= noOfOpts; i++){
+        token = strtok(NULL, ALLOWED_CMD_DELIMITERS);
+        strcpy(commandParam[i], token);
       }
-    }
 
-    /* now parse the command parameters into tokens with null-termination */
-    for(i = 1; i <= noOfOpts; i++){
-      rxString.buffer = strtok(NULL, ALLOWED_CMD_DELIMITERS);
-      /* strcat(rxString.buffer, "\0"); */
-      strcpy(commandParam[i-1], rxString.buffer);
+      memset(commandString.buffer, 0, SERIAL_BUFFERSIZE);
+      commandString.readyToProcess = 0;
     }
-
-    /* parsing finished, reset rxString */
-    for(i = 0; i < SERIAL_BUFFERSIZE; i++){
-      rxString.buffer[i] = 0;
-    }
-    rxString.charCount = 0;
-    rxString.readyToProcess = 0;
   }
 
   return commandCode;
@@ -2147,7 +2146,7 @@ void commandSetGearRatio(char* param0, char* param1){
 /* ---------------------------------------------------------------------
     returns the steps per full rotation w/o substeps
  --------------------------------------------------------------------- */
-void commandGetFullRotation(char* param0){
+char* commandGetFullRotation(char* param0){
 
   uint8_t i = 0;
 
@@ -2160,8 +2159,7 @@ void commandGetFullRotation(char* param0){
     sprintf(txString.buffer, "%.0f", motor[i].stepsPerFullRotation);
   }
 
-  sendText(txString.buffer);
-  return;
+  return txString.buffer;
 }
 
 /* ---------------------------------------------------------------------
@@ -2374,7 +2372,6 @@ ISR(USART0_RX_vect){
       /* end of command */
       rxString.buffer[rxString.charCount] = '\0';
       rxString.readyToProcess = 1;
-      rxString.charCount = 0;
 
       /* here the command is completely received */
       sendChar(0x06); /* therefore send ACK */
@@ -2432,7 +2429,6 @@ ISR(TIMER0_COMPA_vect){
       buttonState.inDebouncingMode = 0;
     }
   }
-
 
   /* now care about the rotary encoder (only rotations)
    *
@@ -2585,10 +2581,15 @@ int main(void){
   /* initialize TX and RX buffers for USART serial interface */
   rxString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
   txString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
+  commandString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
 
   /* initialize displayBuffer */
   displayBuffer = (char*)malloc(DISPLAY_BUFFER_SIZE * sizeof(char));
 
+  memset(rxString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(txString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(commandString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(displayBuffer, 0, DISPLAY_BUFFER_SIZE);
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
@@ -2606,7 +2607,7 @@ RESET:
     setMotorState(MOTOR0 + i, ON);
   }
 
-  //loadConfigFromEEPROM();
+  loadConfigFromEEPROM();
 
   updateDisplay();
 
@@ -2622,11 +2623,13 @@ RESET:
     updateDisplay();
 
     /* check for new received command */
-    commandCode = parseCommand();
+    if(rxString.readyToProcess){
+      copyRXstring();
+      commandCode = parseCommand();
+    }
 
     switch(commandCode){
       case 0x80:    /* no or unknown command, ignore it */
-        asm("nop");
         break;
 
       case 0x81:    /* *RST */
@@ -2641,30 +2644,30 @@ RESET:
         break;
 
       case 0x83:    /* set IDN */
-        if(strlen(commandParam[0]) > IDN_STRING_LENGTH){
+        if(strlen(commandParam[1]) > IDN_STRING_LENGTH){
           break;
         }
-        eeprom_update_block((const void*)commandParam[0], (void*)IDNtext, IDN_STRING_LENGTH + 1);
+        eeprom_update_block((const void*)commandParam[1], (void*)IDNtext, IDN_STRING_LENGTH + 1);
         break;
 
       case 0x84:    /* MOVEABS */
-        commandMoveAbs(commandParam[0], commandParam[1], commandParam[2]);
+        commandMoveAbs(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       case 0x85:    /* MOVEREL */
-        commandMoveRel(commandParam[0], commandParam[1], commandParam[2]);
+        commandMoveRel(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       case 0x86:    /* ZERORUN */
-        motorZeroRun((uint8_t)atoi(commandParam[0]));
+        motorZeroRun((uint8_t)atoi(commandParam[1]));
         break;
 
       case 0x87:    /* ENABLE */
-        commandEnable(commandParam[0], commandParam[1]);
+        commandEnable(commandParam[1], commandParam[2]);
         break;
 
       case 0x88:    /* POS? --> get position in [unit] */
-        sendText(commandGetMotorPosition(commandParam[0], commandParam[1]));
+        sendText(commandGetMotorPosition(commandParam[1], commandParam[2]));
         break;
 
       case 0x89:    /* SAVECONF: save current machine configuration */
@@ -2676,55 +2679,55 @@ RESET:
         break;
 
       case 0x8B:    /* ISMOVING? */
-        sendText(commandIsMoving(commandParam[0]));
+        sendText(commandIsMoving(commandParam[1]));
         break;
 
       case 0x8C:    /* GETANALOG */
-        sendText(commandGetAnalog(commandParam[0]));
+        sendText(commandGetAnalog(commandParam[1]));
         break;
 
       case 0x8D:    /* GETOPTZEROPOS */
-        sendText(commandGetOptZeroPos(commandParam[0]));
+        sendText(commandGetOptZeroPos(commandParam[1]));
         break;
 
       case 0x8E:    /* SETOPTZEROPOS */
-        commandSetOptZeroPos(commandParam[0], commandParam[1]);
+        commandSetOptZeroPos(commandParam[1], commandParam[2]);
         break;
 
       case 0x8F:    /* GETGEARRATIO */
-        sendText(commandGetGearRatio(commandParam[0]));
+        sendText(commandGetGearRatio(commandParam[1]));
         break;
 
       case 0x90:    /* SETGEARRATIO */
-        commandSetGearRatio(commandParam[0], commandParam[1]);
+        commandSetGearRatio(commandParam[1], commandParam[2]);
         break;
 
       case 0x91:    /* GETFULLROT */
-        commandGetFullRotation(commandParam[0]);
+        sendText(commandGetFullRotation(commandParam[1]));
         break;
 
       case 0x92:    /* SETFULLROT */
-        commandSetFullRotation(commandParam[0], commandParam[1]);
+        commandSetFullRotation(commandParam[1], commandParam[2]);
         break;
 
       case 0x93:    /* GETSUBSTEPS */
-        sendText(commandGetSubSteps(commandParam[0]));
+        sendText(commandGetSubSteps(commandParam[1]));
         break;
 
       case 0x94:    /* SETSUBSTEPS */
-        commandSetSubSteps(commandParam[0], commandParam[1]);
+        commandSetSubSteps(commandParam[1], commandParam[2]);
         break;
 
       case 0x95:    /* GETWAITTIME */
-        sendText(commandGetWaitTime(commandParam[0]));
+        sendText(commandGetWaitTime(commandParam[1]));
         break;
 
       case 0x96:    /* SETWAITTIME */
-        commandSetWaitTime(commandParam[0], commandParam[1]);
+        commandSetWaitTime(commandParam[1], commandParam[2]);
         break;
 
       case 0x97:    /* SETCONSTSPEED */
-        commandSetConstSpeed(commandParam[0], commandParam[1], commandParam[2]);
+        commandSetConstSpeed(commandParam[1], commandParam[2], commandParam[2]);
         break;
 
       case 0x98:    /* FACTORYRESET */
@@ -2742,9 +2745,10 @@ RESET:
         break;
 
       default:
-        asm("nop");
         break;
     }
+
+    commandCode = 0x80;
   }
 
   /* if we get here, doomsday is near */
