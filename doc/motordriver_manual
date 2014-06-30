@@ -1,7 +1,7 @@
 
 =================================================================
 |  MOTORDRIVER MANUAL                                  rev 001  |
-|  Stefan Lasse                                  21. Feb. 2014  |
+|                                                30. Jun. 2014  |
 =================================================================
 
 Contents
@@ -25,40 +25,11 @@ coming soon.
   1. Pin configuration and usage
 -----------------------------------------------------------------
 
-The Pulser has 6 freely configurable independent pins which can
-be used for
-  - turning statically on or off (output)
-  - reading the actual pin state (input)
-  - executing a freely configurable repeating pulse pattern
-    which turns one pin on and off in a programmable time
-    sequence
-These 6 freely configurable pins are denoted by PIN1...PIN6.
-Turning a pin on means that it is set to 5 Volts.
-Turning a pin off means that it is set to 0 Volts.
 
-The Pulser has 2 special independent pins which can be used for
-  - counting events
-These 2 special pins are denoted by INT1 and INT2.
-Events can be
-  - a rising edge from 0V to 5V
-  - a falling edge from 5V to 0V
-  - a toggle, so both rising and falling edges are recognized
 
 -----------------------------------------------------------------
   2. Initial state and device access
 -----------------------------------------------------------------
-
-On power up the Pulser is completely configured in a defined
-state:
-
-  PIN1 --> 0V, configured as output
-  PIN2 --> 0V, configured as output
-  PIN3 --> 0V, configured as output
-  PIN4 --> 0V, configured as output
-  PIN5 --> 0V, configured as output
-  PIN6 --> 0V, configured as output
-  INT1 --> disabled, configured as input
-  INT2 --> disabled, configured as input
 
 After power up the Pulser is accessible via a COM port from a
 PC. The configuration of the RS232 interface is
@@ -72,32 +43,7 @@ PC. The configuration of the RS232 interface is
   3. Limitations
 -----------------------------------------------------------------
 
-Measured values (statistics based on 1M measurements each)
-
-Risetime of a PIN switching from OFF to ON
-  mean: 34.3 ns
-  sdev: 523  ps
-  
-Falltime of a PIN switching from ON to OFF
-  mean: 33.3 ns
-  sdev: 492  ps
-
-Pulser mode frequency accuracy @ 50 kHz (20 us):
-  mean: + 57 Hz towards setup freq
-  sdev: 192 Hz
-  
-Pulser mode frequency accuracy @ 5 kHz (200 us):
-  mean: + 5.6 Hz towards setup freq
-  sdev: 1.92 Hz
-
-Pulser mode frequency accuracy @ 500 Hz (2 ms):
-  mean: + 0.56 Hz towards setup freq
-  sdev: 19.3  mHz
-  
-Maximum pulser mode periode is 8.7163 years.
-Minumum pulser mode periode is 20 us.
-The time step and therefore time resolution is
-always 1 us (from 10 us timebase upwards).
+coming soon.
 
 -----------------------------------------------------------------
   4. Instruction set
@@ -109,21 +55,99 @@ denoted by <xxx>, must be separated by either SPACE or "," or ";"
 or TAB. The command is completed by sending a CRLF or LF.
 
 Command:  *RST
-Function: Resets the Pulser to the initial state.
+Function: Resets the motordriver to the initial state.
 Example:  *RST
 
 Command:  *IDN?
-Function: Returnes the identification name of the pulser.
+Function: Returnes the identification name of the motordriver.
 Example:  *IDN?
 
-Command:  *IDN <pulser_idn>
-Function: Sets the identification of the pulser.
+Command:  *IDN <driver_idn>
+Function: Sets the identification of the motordriver.
 Note:     The maximum number of characters is 20.
-Example:  *IDN NewPulserName
-          Sets the string "NewPulserName" as IDN.
+Example:  *IDN NewName
+          Sets the string "NewName" as IDN.
 
+Command:  MOVEABS <mot> <pos> <unit>
+Function: Moves motor <mot> to the absolute position <pos> <unit>
+          The units can be steps, degree or radians.
+Note:     The units must be written in lower case letters.
+Example:  MOVEABS 0 22.5 deg
+          MOVEABS 0 0.125 pi
+          Both examples do the same in different units.
 
-MOVEREL [motor] [value] [unit]
+Command:  MOVEREL <mot> <pos> <unit>
+Function: Moves motor <mot> relative to the current position
+          The units can be steps, degree or radians.
+Note:     The units must be written in lower case letters.
+Example:  MOVEREL 2 22.5 deg
+          MOVEREL 2 0.125 pi
+          Both examples do the same in different units.
+
+Command:  ZERORUN <mot>
+Function: Finds the mechanical zero position of the motor.
+Note:     During motor zero run no communication or usage
+          of the motordriver is allowed.
+Example:  ZERORUN 1
+          Finds the mechanical zero position of motor 1
+
+Command:  ENABLE <mot> <on/off>
+Function: Turns motor <mot> on (1) or off (0)
+Note:     Both for enabeling and disabeling of a motor
+          the same command is used.
+Example:  ENABLE 2 1
+          Turns motor 2 on
+          ENABLE 2 0
+          Turns motor 2 off
+
+Command:  GETPOS <mot> <unit>
+Function: Returns the actual motor position in the given unit.
+Example:  GETPOS 1 deg
+          Returns the current position of motor 1 in degree
+
+Command:  SAVECONF
+Note:     The driver configurations are stored in an EEPROM.
+          Maximum wirte cycles are 100000.
+Function: Saves all current configurations for all motors.
+Example:  SAVECONF
+
+Command:  LOADCONF
+Function: Loads all saved configurations for all motors.
+Example:  LOADCONF
+
+Command:  GETOPTZEROPOS <mot>
+Function: Returns the optical zero postion.
+Example:  GETOPTZEROPOS 3
+          Returns the optical zero postion of motor 3.
+
+Command:  SETOPTZEROPOS <mot>
+Function: Set the optical zero postion for motor <mot>.
+Note:     For the optical zero position the unit is always
+          steps.
+Example:  SETOPTZEROPOS 3 574
+          Sets the optical zero postion of motor 3 to 574 steps.
+
+Command:  GETWAITTIME <mot>
+Function: Returns the wait time between two steps of a motor.
+Example:  GETWAITTIME 0
+          Returns the wait time between two steps of motor 0.
+
+Command:  SETWAITTIME <mot> <time>
+Function: Sets the wait time between two steps to <time>
+          milliseconds for motor <mot>.
+Note:     The wait time must be an integer. The unit for
+          the wait time is always milliseconds.
+Example:  SETWAITTIME 1 5
+          Seta the wait time of motor 1 to 5 milliseconds.
+
+Command:  STOPALL
+Function: Stops all motor movements immediatly.
+Example:  STOPALL
+
+Command:  FACTORYRESET
+Function: Resets the motordriver to factory state.
+Example:  FACTORYRESET
+
 
 -----------------------------------------------------------------
   5. What to do if I got problems?
