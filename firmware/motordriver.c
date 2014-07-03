@@ -2304,7 +2304,7 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
                                                       *motor[i].subSteps));
 
     if(waitTime < 1){
-      sprintf(txString.buffer, "err: time too short");
+      sprintf(txString.buffer, "err: time too short: %dms", waitTime);
       sendText(txString.buffer);
       return;
     }
@@ -2727,7 +2727,7 @@ RESET:
         break;
 
       case 0x97:    /* SETCONSTSPEED */
-        commandSetConstSpeed(commandParam[1], commandParam[2], commandParam[2]);
+        commandSetConstSpeed(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       case 0x98:    /* FACTORYRESET */
