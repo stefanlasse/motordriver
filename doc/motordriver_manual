@@ -31,7 +31,7 @@ coming soon.
   2. Initial state and device access
 -----------------------------------------------------------------
 
-After power up the Pulser is accessible via a COM port from a
+After power up the Motordriver is accessible via a COM port from a
 PC. The configuration of the RS232 interface is
   - 57600 Baud
   - 8 bit character size
@@ -49,7 +49,7 @@ coming soon.
   4. Instruction set
 -----------------------------------------------------------------
 
-The Pulser has the following commands which can be used. Note,
+The Motordriver has the following commands which can be used. Note,
 that the command parser is case sensitive. The command parameters,
 denoted by <xxx>, must be separated by either SPACE or "," or ";"
 or TAB. The command is completed by sending a CRLF or LF.
