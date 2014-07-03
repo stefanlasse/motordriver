@@ -2304,7 +2304,7 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
                                                       *motor[i].subSteps));
 
     if(waitTime < 1){
-      sprintf(txString.buffer, "err: time too short: %dms", waitTime);
+      sprintf(txString.buffer, "err: time too short", waitTime);
       sendText(txString.buffer);
       return;
     }
