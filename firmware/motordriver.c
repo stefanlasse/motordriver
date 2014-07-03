@@ -1946,10 +1946,10 @@ void commandMoveRel(char* param0, char* param1, char* param2){
     motor[i].desiredPosition += (int16_t)strtol(param1, (char **)NULL, 10);
   }
   if(strcmp(param2, "deg") == 0){
-    degreeToSteps(i, atof(commandParam[1]), 1.0f);
+    degreeToSteps(i, atof(param1), 1.0f);
   }
   if(strcmp(param2, "pi") == 0){
-    radiansToSteps(i, atof(commandParam[1]), 1.0f);
+    radiansToSteps(i, atof(param1), 1.0f);
   }
 
   return;
@@ -1996,17 +1996,17 @@ char* commandGetMotorPosition(char* param0, char* param1){
   }
   else{
     if(strcmp(param1, "steps") == 0){
-      sprintf(txString.buffer, "%d steps", motor[i].actualPosition);
+      sprintf(txString.buffer, "%d", motor[i].actualPosition);
     }
     else if(strcmp(param1, "deg") == 0){
-      sprintf(txString.buffer, "%f deg", stepsToDegree(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f", stepsToDegree(i, motor[i].actualPosition));
     }
     else if(strcmp(param1, "pi") == 0){
-      sprintf(txString.buffer, "%f pi", stepsToRadian(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f", stepsToRadian(i, motor[i].actualPosition));
     }
     else{
       /* wrong unit argument returns in degree */
-      sprintf(txString.buffer, "%f deg", stepsToDegree(i, motor[i].actualPosition));
+      sprintf(txString.buffer, "%f", stepsToDegree(i, motor[i].actualPosition));
     }
   }
 
@@ -2071,7 +2071,7 @@ char* commandGetOptZeroPos(char* param0){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%d steps", motor[i].opticalZeroPosition);
+    sprintf(txString.buffer, "%d", motor[i].opticalZeroPosition);
   }
 
   return txString.buffer;
