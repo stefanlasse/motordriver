@@ -2136,8 +2136,8 @@ void commandSetGearRatio(char* param0, char* param1){
     return;
   }
   else{
-    val = (float)atof(param1);
-    motor[i].opticalZeroPosition = val;
+    val = (double)atof(param1);
+    motor[i].gearRatio = val;
   }
 
   return;
