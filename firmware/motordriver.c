@@ -1592,7 +1592,7 @@ void updateMenu(void){
     if(rotEncVal != 0){
       menuPtr = (menuItem*)pgm_read_word(&menuList[menu.currentDisplayedMenu]);
       state = (uint8_t)pgm_read_byte(&menuPtr->state);
-      sendText("switch mode");
+
       switch(state){
         case MENU_MAIN:   /* main menu point, no values here to change */
           break;
@@ -1701,14 +1701,12 @@ void updateMenu(void){
 
         case MENU_SAVE_CONFIG:   /* save actual configuration */
           saveConfigToEEPROM();
-          sendText("saved");
           menu.newMenuMode = MENU_SCROLL_MODE;
           menu.currentDisplayedMenu += 1;
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
-          sendText("loaded");
           menu.newMenuMode = MENU_SCROLL_MODE;
           menu.currentDisplayedMenu += 1;
           break;
