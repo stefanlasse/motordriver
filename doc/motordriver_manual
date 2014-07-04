@@ -22,9 +22,102 @@ The angular resolution is 0.0675 degree.
 
 
 -----------------------------------------------------------------
-  1. Pin configuration and usage
+  1. Usage
 -----------------------------------------------------------------
 
+1.1 General usage
+By powering on the motordriver it comes up with its start
+screen. Turning the rotary encoder serves to scroll through
+the menu. Pressing the rotary encoder enters the selected menu.
+Pressing the menu-escape-button leaves the menu again.
+
+1.1.1 Display structure
+In almost every menu one can see four displayed values, all of
+them according to one's wished selection.
+The upper left value accompanies to Motor 0.
+The upper right value accompanies to Motor 1.
+The lower left value accompanies to Motor 2.
+The lower right value accompanies to Motor 3.
+
+1.1.2 Motor selection
+To select a motor there are four buttons. Motor selection can
+solely be done in an entered menu. To select a motor, press the
+respective motor-selection button. A selected motor is signed
+with an arrow on the display. Pressing the selection-button
+again deselects the motor.
+Once a motor is selected its appropriated value can be changed
+by turning the rotary encoder.
+By leaving a menu without motor deselection the selectes motor(s)
+stay selected in an other menu.
+
+1.2 Menu: Change motor position
+This menu gives information of the current motor position and
+can change the motor position. The default unit is degree.
+The position of a selected motor can be changed by turning the
+rotary encoder. Default steps for different units are
+- 1° if unit is degree
+- 0.125*pi if unit is radian
+- 1 step is unit is steps
+
+When pressing the rotary encoder again in this menu one enters
+the fast moving mode. Pressing the rotary encoder again leaves
+the fast mode. Default steps in fast mode are
+- 10° if unit is degree
+- 0.125*pi if unit is radian
+- 100 step is unit is steps  
+
+1.3 Menu: Change step unit
+In this menu one can choose the displayed position unit. There
+are three choices for each motor:
+- degree
+- radian
+- step
+
+1.4 Menu: Change step wait time
+Here the wait time between two steps can be changed. This
+results in faster or slower motor movements. The default
+value is 3 milliseconds.
+We recommend to not get below this time even if this works.
+
+1.5 Menu: Set step multiplier
+In this menu one can adjust a step multiplier. The standard
+value is 1.0. This results in an relative velocity reduction 
+between the motors.
+For example: if the step multiplier for motor 0 is 1.0
+and the step multiplier for motor 2 is 4.0, motor 2 will
+move four times slower than motor 0 when changing the
+motors positions. Negative values are allowed as well.
+This will result in counter direction movements.
+
+1.6 Menu: Run zero calibration
+Here one can calibrate the motor zero position for each
+motor. To perform a zero calibration select the motors
+to be calibrated and turn the rotary encoder. Note, that
+during zero calibration no actions can be done on the
+motordriver, even serial commands will not be accepted.
+The zero calibration will automatically deselect a motor
+when its calibration is finished. 
+
+1.7 Menu: Change motor substeps
+
+1.8 Menu: Save current configuration
+
+1.9 Menu: Load last configuration
+
+1.10 Menu: Define optical zero position
+In this menu one can define the optical zero position. This
+is necessary due to an mostly unknown placement of the optical
+element mounted to the motor. Here one must adjust once the
+wished optical zero position manually. After adjustment
+it is recommended to save this configuration (see 1.8).
+When now performing a zero calibration as explained in 1.6
+the zero position will be the here defined optical zero position.
+
+1.11 Menu: Set constant angular speed
+Here the motors can be set into an infinite moving state in
+clockwise (CW) or counter clockwise (CCW) state. To get the
+motors moving with different velocities one must change the
+wait times between two steps. 
 
 
 -----------------------------------------------------------------
@@ -74,7 +167,7 @@ Function: Moves motor <mot> to the absolute position <pos> <unit>
 Note:     The units must be written in lower case letters.
 Example:  MOVEABS 0 22.5 deg
           MOVEABS 0 0.125 pi
-		  MOVEABS 0 333 steps
+		      MOVEABS 0 333 steps
           Both examples do the same in different units.
 
 Command:  MOVEREL <mot> <pos> <unit>
