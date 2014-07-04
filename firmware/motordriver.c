@@ -1676,9 +1676,17 @@ void updateMenu(void){
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              motor[i].subSteps += rotEncVal;
+              if(rotEncVal > 0){
+                motor[i].subSteps *= 2.0;
+              }
+              if(rotEncVal < 0){
+                motor[i].subSteps /= 2.0;
+              }
               if(motor[i].subSteps < 1){
                 motor[i].subSteps = 1;
+              }
+              if(motor[i].subSteps > 8){
+                motor[i].subSteps = 8;
               }
             }
           }
