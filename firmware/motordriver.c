@@ -384,7 +384,6 @@ volatile button buttonState;            /* information on the user interface */
 volatile rotaryEncoder rotEnc;
 
 
-
 /* ---------------------------------------------------------------------
     EEPROM memory
  --------------------------------------------------------------------- */
@@ -1374,7 +1373,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_CHANGE_POSITION:
       for(i = 0; i <= MAX_MOTOR; i++){
-        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        c = ' ';
+        if(menu.selectedMotor & (1 << i)){
+          c = 0x7E;
+          if(menu.fastMovingMode){
+            c = 0x3E;
+          }
+        }
         switch(motor[i].stepUnit){
           case MOTOR_STEP_UNIT_STEP:
             sprintf(menu.newDisplayValue[i], "%c%dst", c, motor[i].actualPosition);
@@ -1536,7 +1541,6 @@ void updateMenu(void){
     if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor != 0){
       menu.newMenuMode = MENU_VALUE_CHANGE;
     }
-
   }
 
   if((menuState == MENU_CHANGE_MODE) || (menuState == MENU_VALUE_CHANGE)){
@@ -1588,7 +1592,7 @@ void updateMenu(void){
     if(rotEncVal != 0){
       menuPtr = (menuItem*)pgm_read_word(&menuList[menu.currentDisplayedMenu]);
       state = (uint8_t)pgm_read_byte(&menuPtr->state);
-
+      sendText("switch mode");
       switch(state){
         case MENU_MAIN:   /* main menu point, no values here to change */
           break;
@@ -1599,7 +1603,7 @@ void updateMenu(void){
               switch(motor[i].stepUnit){
                 case MOTOR_STEP_UNIT_STEP:
                   if(menu.fastMovingMode){
-                  motor[i].desiredPosition += ((int16_t)rotEncVal)*100;
+                    motor[i].desiredPosition += ((int16_t)rotEncVal)*100;
                   }
                   else{
                     motor[i].desiredPosition += (int16_t)rotEncVal;
@@ -1671,6 +1675,9 @@ void updateMenu(void){
               updateDisplay();
             }
           }
+          /* get back to the MENU_SCROLL_MODE when finished calibration*/
+          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.currentDisplayedMenu += 1;
           break;
 
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
@@ -1694,10 +1701,16 @@ void updateMenu(void){
 
         case MENU_SAVE_CONFIG:   /* save actual configuration */
           saveConfigToEEPROM();
+          sendText("saved");
+          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.currentDisplayedMenu += 1;
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
+          sendText("loaded");
+          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.currentDisplayedMenu += 1;
           break;
 
         case MENU_OPTICAL_ZERO_POS:
@@ -2590,6 +2603,7 @@ int main(void){
   displayBuffer = (char*)malloc(DISPLAY_BUFFER_SIZE * sizeof(char));
 
   lcd_init();
+  lcd_home();
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
