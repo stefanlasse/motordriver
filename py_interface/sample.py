@@ -14,6 +14,7 @@ driver = Motordriver(interface = '/dev/ttyUSB0')
 QWP = 0   # motor 0 is the one with the quarter wave plate
 HWP = 2   # motor 2 is the one with the half wave plate
 
+
 # --------------------------------------------------------------------------
 def measureStokesParameterAbs():
   # first move the motors to zero position

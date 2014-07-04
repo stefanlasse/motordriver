@@ -66,7 +66,7 @@ class Motordriver():
   def __checkMotor(self, motor):
     if not isinstance(motor, int):
       print "error: motor number must be an integer."
-      return false
+      return False
     if motor > 3:
       print "maximum motor is 3"
       return False
@@ -95,6 +95,7 @@ class Motordriver():
     self.ser.flushOutput()
     
     while ord(ack) != 6 and maxtries < 10:
+      #print cmd
       self.ser.write(cmd + '\n')
       self.ser.flush()
       time.sleep(0.05)
@@ -135,7 +136,7 @@ class Motordriver():
   # --------------------------------------------------------------------------
   def getIDN(self):
     self.__sendCommand("*IDN?")
-    return self.__readResponse()
+    return str(self.__readResponse())
   
   # --------------------------------------------------------------------------
   def setIDN(self, id):
@@ -201,7 +202,7 @@ class Motordriver():
   def getPosition(self, motor=0, unit=DEGREE):
     if self.__checkMotor(motor) and self.__checkUnit(unit):    
       self.__sendCommand("GETPOS " + str(motor) + " " + unit)
-      return self.__readResponse()
+      return float(self.__readResponse())
     return
 
   # --------------------------------------------------------------------------
@@ -229,14 +230,14 @@ class Motordriver():
   def getAnalogValue(self, channel=0):
     if self.__checkMotor(channel):
       self.__sendCommand("GETANALOG " + str(channel))
-      return self.__readResponse()
+      return int(self.__readResponse())
     return    
   
   # --------------------------------------------------------------------------
   def getOpticalZeroPosition(self, motor=0):
     if self.__checkMotor(motor):
       self.__sendCommand("GETOPTZEROPOS " + str(motor))
-      return self.__readResponse() + " steps"
+      return int(self.__readResponse())
     return
   
   # --------------------------------------------------------------------------
@@ -254,7 +255,7 @@ class Motordriver():
   def getGearRatio(self, motor=0):
     if self.__checkMotor(motor):
       self.__sendCommand("GETGEARRATIO " + str(motor))
-      return self.__readResponse()
+      return float(self.__readResponse())
     return
   
   # --------------------------------------------------------------------------
@@ -268,7 +269,7 @@ class Motordriver():
   def getStepsPerFullRotation(self, motor=0):
     if self.__checkMotor(motor):
       self.__sendCommand("GETFULLROT " + str(motor))
-      return self.__readResponse()
+      return int(self.__readResponse())
     return
 
   # --------------------------------------------------------------------------
@@ -277,7 +278,7 @@ class Motordriver():
       print "must be given as integer number"
       return
     
-    if steps != 200 and steps != 400:
+    if steps != 200.0 and steps != 400.0:
       print "steps must be either 200 or 400."
       return
     
@@ -290,7 +291,7 @@ class Motordriver():
   def getSubSteps(self, motor=0):
     if self.__checkMotor(motor):
       self.__sendCommand("GETSUBSTEPS " + str(motor))
-      return self.__readResponse()
+      return int(self.__readResponse())
     return
 
   # --------------------------------------------------------------------------
@@ -299,7 +300,7 @@ class Motordriver():
       print "must be given as integer number"
       return
     
-    if (substeps and (substeps - 1)):
+    if substeps != 0 and ((substeps and (substeps - 1)) == 0):
       print "substeps must be a power of two"
       return
     
@@ -315,8 +316,8 @@ class Motordriver():
   # --------------------------------------------------------------------------
   def getWaitTimeBetweenSteps(self, motor=0):
     if self.__checkMotor(motor):
-      self.__sendCommand("GETWAITTIME")
-      return self.__readResponse()
+      self.__sendCommand("GETWAITTIME " + str(motor))
+      return int(self.__readResponse())
     return
 
   # --------------------------------------------------------------------------
