@@ -74,6 +74,7 @@ Function: Moves motor <mot> to the absolute position <pos> <unit>
 Note:     The units must be written in lower case letters.
 Example:  MOVEABS 0 22.5 deg
           MOVEABS 0 0.125 pi
+		  MOVEABS 0 333 steps
           Both examples do the same in different units.
 
 Command:  MOVEREL <mot> <pos> <unit>
