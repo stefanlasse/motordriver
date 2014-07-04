@@ -599,15 +599,10 @@ void initBuffers(void){
     menu.newMenuText[i][j]     = 0;
   }
 
-  for(i = 0; i < DISPLAY_BUFFER_SIZE; i++){
-    displayBuffer[i] = 0;
-  }
-
-  /* serial RX and TX buffers */
-  for(i = 0; i < SERIAL_BUFFERSIZE; i++){
-    txString.buffer[i] = 0;
-    rxString.buffer[i] = 0;
-  }
+  memset(rxString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(txString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(commandString.buffer, 0, SERIAL_BUFFERSIZE);
+  memset(displayBuffer, 0, DISPLAY_BUFFER_SIZE);
 
   return;
 }
@@ -2586,25 +2581,21 @@ int main(void){
   /* initialize displayBuffer */
   displayBuffer = (char*)malloc(DISPLAY_BUFFER_SIZE * sizeof(char));
 
-  memset(rxString.buffer, 0, SERIAL_BUFFERSIZE);
-  memset(txString.buffer, 0, SERIAL_BUFFERSIZE);
-  memset(commandString.buffer, 0, SERIAL_BUFFERSIZE);
-  memset(displayBuffer, 0, DISPLAY_BUFFER_SIZE);
+  lcd_init();
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
-  lcd_init();
+  initBuffers();
   initADC();
   initMotorDelayTimer();
   initManualOperatingButtons();
-  initBuffers();
   initUSART();
 
   /* TODO: detect motors */
 
   /* turn on all motors */
   for(i = 0; i <= MAX_MOTOR; i++){
-    setMotorState(MOTOR0 + i, ON);
+    setMotorState(i, ON);
   }
 
   loadConfigFromEEPROM();
