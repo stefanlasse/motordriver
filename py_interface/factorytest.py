@@ -62,11 +62,9 @@ def checkAbsoluteMovement():
   
   for i in motorList:
     newPosition[i] = driver.getPosition(i)
-    print newPosition[i]
   
   # check positions
   for i in motorList:
-    print "diff: " + str(abs(newPosition[i] - (i+1.0)*10.0))
     if abs(newPosition[i] - (i+1.0)*10.0) > 0.0675:
       print "ERROR: MOVEABS test failed for motor " + str(i)
   return
@@ -93,8 +91,22 @@ def checkRelativeMovement():
 # --------------------------------------------------------------------------
 # check optical zero position
 # --------------------------------------------------------------------------
-def checkOpricalZeroPosition():
+def checkOpticalZeroPosition():
   print "Check OPTICAL ZERO POSITION"
+  save = [0, 0, 0, 0]
+  for i in range(4):
+    save[i] = driver.getOpticalZeroPosition(i)
+  
+  for i in range(4):
+    driver.setOpticalZeroPosition(i, (i+1)*100)
+  
+  for i in range(4):
+    gr = driver.getOpticalZeroPosition(i)
+    if gr != (i+1)*100:
+      print "ERROR: OPTICAL ZERO POSITION test failed for motor " + str(i)
+  
+  for i in range(4):
+    driver.setOpticalZeroPosition(i, save[i])
   return
 
 # --------------------------------------------------------------------------
@@ -212,7 +224,7 @@ checkIDN()
 checkZeroRun()
 checkAbsoluteMovement()
 checkRelativeMovement()
-checkOpricalZeroPosition()
+checkOpticalZeroPosition()
 checkGearRatio()
 checkStepsPerFullRotation()
 checkSubSteps()
