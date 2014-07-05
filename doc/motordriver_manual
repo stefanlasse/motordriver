@@ -59,13 +59,13 @@ rotary encoder. Default steps for different units are
   - 0.125*pi if unit is radian
   - 1 step is unit is steps
 
-When pressing the rotary encoder again in this menu one enters
+When pressing the rotary encoder in this menu one enters
 the fast moving mode. Pressing the rotary encoder again leaves
 the fast mode. The fast moving mode can be noticed by another
 marking arrow. Default steps in fast mode are
   - 10° if unit is degree
   - 0.125*pi if unit is radian
-  - 100 step is unit is steps  
+  - 100 steps is unit is steps  
 
 1.3 Menu: Change step unit
 In this menu one can choose the displayed position unit. There
@@ -152,8 +152,7 @@ factory configuration. The factory configuration can be restored
 with the FACTORYRESET command as described in chapter 4.
 
 After power up the Motordriver is accessible via a serial port 
-from a PC. The configuration of the RS232 interface configuration
-is
+from a PC. The configuration of the RS232 interface is:
   - 57600 Baud
   - 8 bit character size
   - no parity bit
@@ -195,8 +194,8 @@ Function: Moves motor <mot> to the absolute position <pos> <unit>
 Note:     The units must be written in lower case letters.
 Example:  MOVEABS 0 22.5 deg
           MOVEABS 0 0.125 pi
-		      MOVEABS 0 333 steps
-          Both examples do the same in different units.
+		  MOVEABS 0 333 steps
+          The examples do the same in different units.
 
 Command:  MOVEREL <mot> <pos> <unit>
 Function: Moves motor <mot> relative to the current position
@@ -270,6 +269,13 @@ Command:  FACTORYRESET
 Function: Resets the motordriver to factory state.
 Example:  FACTORYRESET
 
+Command:  ISMOVING
+Function: 
+Example:  ISMOVING 0
+
+Command:  SETCONSTSPEED
+Function: 
+Example:  SETCONSTSPEED 1 CW 10.0
 
 -----------------------------------------------------------------
   5. What to do if I got problems?
