@@ -1458,7 +1458,12 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_RUN_ZERO_CALIBRATION:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
-        sprintf(menu.newDisplayValue[i], "%cMot %d", c, i);
+        if(forbiddenZone[i].active){
+          sprintf(menu.newDisplayValue[i], "forbzone");
+        }
+        else{
+          sprintf(menu.newDisplayValue[i], "%cMot %d", c, i);
+        }
       }
       break;
 
@@ -1493,14 +1498,19 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_CONST_ANGULAR_SPEED:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
-        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_STOP){
-          sprintf(menu.newDisplayValue[i], "%cSTOP", c);
+        if(forbiddenZone[i].active){
+          sprintf(menu.newDisplayValue[i], "forbzone");
         }
-        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CW){
-          sprintf(menu.newDisplayValue[i], "%cCW", c);
-        }
-        if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CCW){
-          sprintf(menu.newDisplayValue[i], "%cCCW", c);
+        else{
+          if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_STOP){
+            sprintf(menu.newDisplayValue[i], "%cSTOP", c);
+          }
+          if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CW){
+            sprintf(menu.newDisplayValue[i], "%cCW", c);
+          }
+          if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_CCW){
+            sprintf(menu.newDisplayValue[i], "%cCCW", c);
+          }
         }
       }
       break;
