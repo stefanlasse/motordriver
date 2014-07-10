@@ -284,13 +284,18 @@ Command:  FACTORYRESET
 Function: Resets the motordriver to factory state.
 Example:  FACTORYRESET
 
-Command:  ISMOVING
-Function: 
+Command:  ISMOVING <mot>
+Function: Returns the motor moving state.
+          1: motor <mot> is moving.
+          0: motor <mot> doesn't move.
 Example:  ISMOVING 0
 
-Command:  SETCONSTSPEED
-Function: 
+Command:  SETCONSTSPEED <mot> <dir> <time>
+Function: Enables motor <mot> to move infinite in direction <dir>.
+          <time> specifies the time for one full rotation.
 Example:  SETCONSTSPEED 1 CW 10.0
+          Moves the motor infinite in clockwise direction. One
+          full rotation takes 10 seconds.
 
 -----------------------------------------------------------------
   5. What to do if I got problems?
