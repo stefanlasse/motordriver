@@ -209,7 +209,7 @@ Function: Moves motor <mot> to the absolute position <pos> <unit>
 Note:     The units must be written in lower case letters.
 Example:  MOVEABS 0 22.5 deg
           MOVEABS 0 0.125 pi
-		  MOVEABS 0 333 steps
+		      MOVEABS 0 333 steps
           The examples do the same in different units.
 
 Command:  MOVEREL <mot> <pos> <unit>
@@ -296,6 +296,15 @@ Function: Enables motor <mot> to move infinite in direction <dir>.
 Example:  SETCONSTSPEED 1 CW 10.0
           Moves the motor infinite in clockwise direction. One
           full rotation takes 10 seconds.
+
+Command:  SETFORBZONE <mot> <start> <stop>
+Function: Defines a forbidden zone for motor <mot>. The motor
+          will not move into this zone. <start> must be always
+          smaller than <stop>. The unit for <start> and <stop>
+          is always steps.
+Example:  SETFORBZONE 0 148 1333
+          Defines a forbidden zone for motor 0 between step 148
+          and step 1333.
 
 -----------------------------------------------------------------
   5. What to do if I got problems?
