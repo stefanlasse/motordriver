@@ -139,11 +139,11 @@ typedef struct{
   double   gearRatio;              /* initially set to 60:18 */
   double   stepsPerFullRotation;   /* initially set to 400 */
   double   subSteps;               /* could be 1, 2, 4, 8, 16 */
-  int8_t  stepUnit;                /* could be: step, degree, radian */
+  int8_t   stepUnit;               /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
-  int8_t  angularVelocity;        /* in seconds per full rotation */
+  int8_t   angularVelocity;        /* in seconds per full rotation */
 
 }motorInfo;
 
@@ -177,11 +177,19 @@ const int16_t table[16] PROGMEM = {0,0,-1,0,0,0,0,1,1,0,0,0,0,-1,0,0};
 
 typedef struct{
 
-  int8_t  direction;
+  int8_t direction;
   int8_t steps;
   uint8_t readyToProcess;
 
 }rotaryEncoder;
+
+typedef struct{
+
+  int16_t start;    /* in steps */
+  int16_t stop;     /* in steps */
+  uint8_t active;
+
+}zone;
 
 
 /* ---------------------------------------------------------------------
@@ -249,9 +257,10 @@ ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two 
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
 ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
+ADD_COMMAND(26, "SETFORBZONE\0",    3, 0x9A)  /* defines a forbidden zone */
 
 
-#define TOTAL_NUMBER_OF_COMMANDS 26
+#define TOTAL_NUMBER_OF_COMMANDS 27
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -261,7 +270,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_15_, &cmd_16_, &cmd_17_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
-                                              &cmd_24_, &cmd_25_
+                                              &cmd_24_, &cmd_25_, &cmd_26_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -374,6 +383,7 @@ typedef struct{
 static const char firmwareVersion[] = FW_VERSION;
 
 volatile motorInfo motor[MAX_MOTOR+1];  /* we got 4 motors [0..3] */
+volatile zone forbiddenZone[MAX_MOTOR+1];
 volatile serialString rxString;         /* for a received command */
 volatile serialString txString;         /* for information to send */
 volatile serialString commandString;
@@ -399,6 +409,8 @@ double   EEMEM subStepsEE[MAX_MOTOR+1];
 double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
+uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
+uint16_t EEMEM forbiddenZoneStopEE[MAX_MOTOR+1];
 
 
 /* ---------------------------------------------------------------------
@@ -498,11 +510,9 @@ void initDataStructs(void){
     motor[i].angularVelocity      = OFF;
   }
 
-  strcpy(rxString.buffer, "0\0");
   rxString.charCount = 0;
   rxString.readyToProcess = 0;
 
-  strcpy(txString.buffer, "0\0");
   txString.charCount = 0;
   txString.readyToProcess = 0;
 
@@ -527,6 +537,12 @@ void initDataStructs(void){
   rotEnc.direction = NO_MOVE;
   rotEnc.steps = 0;
   rotEnc.readyToProcess = 0;
+
+  for(i = 0; i <= MAX_MOTOR; i++){
+    forbiddenZone[i].active = 0;
+    forbiddenZone[i].start  = 0;
+    forbiddenZone[i].stop   = 0;
+  }
 
   return;
 }
@@ -771,6 +787,11 @@ void motorZeroRun(uint8_t i){
   uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
 
+  if(forbiddenZone[i].active){
+    /* zerorun not allowed if forbidden zone is active */
+    return;
+  }
+
   /* stop any motor movements (stop timer/counter2) */
   TCCR2B &= ~0x07;
 
@@ -872,19 +893,20 @@ void saveConfigToEEPROM(void){
 
   uint8_t i = 0;
 
-  cli();
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    for(i = 0; i <= MAX_MOTOR; i++){
+      eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
+      eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
+      eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
+      eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
+      eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+      eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
+      eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
-  for(i = 0; i <= MAX_MOTOR; i++){
-    eeprom_update_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_update_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
-    eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
-    eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
-    eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
-    eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
-    eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
+      eeprom_update_block(&(forbiddenZone[i].start), &(forbiddenZoneStartEE[i]), sizeof(int16_t));
+      eeprom_update_block(&(forbiddenZone[i].stop), &(forbiddenZoneStopEE[i]), sizeof(int16_t));
+    }
   }
-
-  sei();
 
   return;
 }
@@ -896,19 +918,25 @@ void loadConfigFromEEPROM(void){
 
   uint8_t i = 0;
 
-  cli();
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    for(i = 0; i <= MAX_MOTOR; i++){
+      eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
+      eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
+      eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
+      eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
+      eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+      eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
+      eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
-  for(i = 0; i <= MAX_MOTOR; i++){
-    eeprom_read_block(&(motor[i].opticalZeroPosition), &(opticalZeroPositionEE[i]), sizeof(int16_t));
-    eeprom_read_block(&(motor[i].gearRatio), &(gearRatioEE[i]), sizeof(double));
-    eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
-    eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
-    eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
-    eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
-    eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
+      eeprom_read_block(&(forbiddenZone[i].start), &(forbiddenZoneStartEE[i]), sizeof(int16_t));
+      eeprom_read_block(&(forbiddenZone[i].stop), &(forbiddenZoneStopEE[i]), sizeof(int16_t));
+
+      /* activate forbidden zone if necessary */
+      if(forbiddenZone[i].start != forbiddenZone[i].stop){
+        forbiddenZone[i].active = 1;
+      }
+    }
   }
-
-  sei();
 
   return;
 }
@@ -1081,8 +1109,7 @@ void lcd_setcursor(uint8_t x, uint8_t y){
 
   uint8_t data;
 
-  switch (y)
-  {
+  switch(y){
     case 1:    /* 1st row */
       data = LCD_SET_DDADR + LCD_DDADR_LINE1 + x;
       break;
@@ -1221,31 +1248,29 @@ double stepsToRadian(uint8_t mot, int16_t steps){
  --------------------------------------------------------------------- */
 void setConstSpeed(uint8_t i, uint8_t state){
 
-  cli();
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    switch(state){
+      case MOTOR_MOVE_INFINITE_STOP:
+        motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
+        motor[i].desiredPosition  = motor[i].actualPosition;
+        break;
 
-  switch(state){
-    case MOTOR_MOVE_INFINITE_STOP:
-      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
-      motor[i].desiredPosition  = motor[i].actualPosition;
-      break;
+      case MOTOR_MOVE_INFINITE_CW:
+        motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
+        motor[i].desiredPosition  = motor[i].actualPosition;
+        motor[i].desiredPosition += 1;
+        break;
 
-    case MOTOR_MOVE_INFINITE_CW:
-      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
-      motor[i].desiredPosition  = motor[i].actualPosition;
-      motor[i].desiredPosition += 1;
-      break;
+      case MOTOR_MOVE_INFINITE_CCW:
+        motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
+        motor[i].desiredPosition  = motor[i].actualPosition;
+        motor[i].desiredPosition += -1;
+        break;
 
-    case MOTOR_MOVE_INFINITE_CCW:
-      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
-      motor[i].desiredPosition  = motor[i].actualPosition;
-      motor[i].desiredPosition += -1;
-      break;
-
-    default:
-      break;
+      default:
+        break;
+    }
   }
-
-  sei();
 
   return;
 }
@@ -1727,6 +1752,11 @@ void updateMenu(void){
         case MENU_CONST_ANGULAR_SPEED:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
+              if(forbiddenZone[i].active){
+                /* const angular speed not allowed if
+                 * fobidden zone is set */
+                break;
+              }
               motor[i].angularVelocity += rotEncVal;
               if(motor[i].angularVelocity < 0){
                 motor[i].angularVelocity = 2;
@@ -2300,15 +2330,20 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     return;
   }
   else{
+    if(forbiddenZone[i].active){
+      /* command not allowed if forbidden zone is set */
+      return;
+    }
+
     /* this is the wait-time for a full rotation in seconds */
     val = atof(param2);
 
     if(strcmp(param1, "STOP") == 0){
-      cli();
-      motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
-      motor[i].waitBetweenSteps = 3;
-      motor[i].desiredPosition  = motor[i].actualPosition;
-      sei();
+      ATOMIC_BLOCK(ATOMIC_FORCEON){
+        motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
+        motor[i].waitBetweenSteps = 3;
+        motor[i].desiredPosition  = motor[i].actualPosition;
+      }
       return;
     }
 
@@ -2349,12 +2384,52 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
  --------------------------------------------------------------------- */
 void commandFactoryReset(void){
 
-  cli();
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    initDataStructs();
+    saveConfigToEEPROM();
+  }
 
-  initDataStructs();
-  saveConfigToEEPROM();
+  return;
+}
 
-  sei();
+/* ---------------------------------------------------------------------
+    defines forbidden zone
+ --------------------------------------------------------------------- */
+void commandSetForbiddenZone(char* param0, char* param1, char* param2){
+
+  uint8_t i = 0;
+  int16_t start = 0;
+  int16_t stop  = 0;
+  int16_t swap = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    start = (int16_t)atoi(param1);
+    stop  = (int16_t)atoi(param2);
+
+    if(start == stop){
+      forbiddenZone[i].start  = 0;
+      forbiddenZone[i].stop   = 0;
+      forbiddenZone[i].active = 0;
+      return;
+    }
+
+    if(start > stop){
+      swap = stop;
+      stop = start;
+      start = swap;
+    }
+
+    forbiddenZone[i].start  = start;
+    forbiddenZone[i].stop   = stop;
+    forbiddenZone[i].active = 1;
+  }
 
   return;
 }
@@ -2509,13 +2584,28 @@ ISR(TIMER2_COMPA_vect){
       else{
         /* here we just waited the specified time between two steps */
         motor[i].isMoving = 1;
+
         if(stepDiff[i] < 0){
           /* moving CCW */
+          /* check for forbidden zone */
+          if(forbiddenZone[i].active
+             && ((motor[i].actualPosition + 1) == forbiddenZone[i].stop)){
+            motor[i].desiredPosition = motor[i].actualPosition;
+            motor[i].isMoving = 0;
+          }
+
           outputDir  |= (1 << (2*i + 1)); /* 1 = CCW, 0 = CW */
           outputStep |= (1 << (2*i));
         }
         else{
           /* moving CW */
+          /* check for forbidden zone */
+          if(forbiddenZone[i].active
+             && ((motor[i].actualPosition + 1) == forbiddenZone[i].start)){
+            motor[i].desiredPosition = motor[i].actualPosition;
+            motor[i].isMoving = 0;
+          }
+
           outputStep |= (1 << (2*i));
         }
         /* so we will move and therefore set back the delay counter */
@@ -2535,7 +2625,7 @@ ISR(TIMER2_COMPA_vect){
     if(motor[i].isMoving){
       if(stepDiff[i] > 0){
         /* check if we got one full rotation */
-        if(((motor[i].actualPosition) + 1.0) > stepsPerFullRotation[i]){
+        if(((motor[i].actualPosition) + 1) > stepsPerFullRotation[i]){
           /* so set back to 0 */
           motor[i].actualPosition = 0;
           /* correct desired motor position */
@@ -2548,7 +2638,7 @@ ISR(TIMER2_COMPA_vect){
       }
       else if(stepDiff[i] < 0){
       /* check if we got one full rotation */
-        if(((motor[i].actualPosition) - 1.0) < 0.0){
+        if(((motor[i].actualPosition) - 1) < 0){
           /* so set back to max steps per round */
           motor[i].actualPosition = (int16_t)round(stepsPerFullRotation[i]);
           /* correct desired motor position */
@@ -2751,10 +2841,16 @@ RESET:
         break;
 
       case 0x99:    /* STOPALL */
-        for(i = 0; i <= MAX_MOTOR; i++){
-          motor[i].desiredPosition = motor[i].actualPosition;
-          motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
+        ATOMIC_BLOCK(ATOMIC_FORCEON){
+          for(i = 0; i <= MAX_MOTOR; i++){
+            motor[i].desiredPosition = motor[i].actualPosition;
+            motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
+          }
         }
+        break;
+
+      case 0x9A:    /* SETFORBZONE */
+        commandSetForbiddenZone(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       default:
