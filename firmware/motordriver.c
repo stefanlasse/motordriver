@@ -258,9 +258,10 @@ ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocit
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
 ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
 ADD_COMMAND(26, "SETFORBZONE\0",    3, 0x9A)  /* defines a forbidden zone */
+ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden zone */
 
 
-#define TOTAL_NUMBER_OF_COMMANDS 27
+#define TOTAL_NUMBER_OF_COMMANDS 28
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -270,7 +271,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_15_, &cmd_16_, &cmd_17_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
-                                              &cmd_24_, &cmd_25_, &cmd_26_
+                                              &cmd_24_, &cmd_25_, &cmd_26_,
+                                              &cmd_27_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -479,6 +481,8 @@ char* commandGetWaitTime(char* param0);
 void  commandSetWaitTime(char* param0, char* param1);
 void  commandSetConstSpeed(char* param0, char* param1, char* param2);
 void  commandFactoryReset(void);
+void  commandSetForbiddenZone(char* param0, char* param1, char* param2);
+void  commandEnableForbiddenZone(char* param0, char* param1);
 
 
 /* =====================================================================
@@ -1459,7 +1463,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         if(forbiddenZone[i].active){
-          sprintf(menu.newDisplayValue[i], "forbzone");
+          sprintf(menu.newDisplayValue[i], "ForbZone");
         }
         else{
           sprintf(menu.newDisplayValue[i], "%cMot %d", c, i);
@@ -1499,7 +1503,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         if(forbiddenZone[i].active){
-          sprintf(menu.newDisplayValue[i], "forbzone");
+          sprintf(menu.newDisplayValue[i], "ForbZone");
         }
         else{
           if(motor[i].angularVelocity == MOTOR_MOVE_INFINITE_STOP){
@@ -2444,6 +2448,29 @@ void commandSetForbiddenZone(char* param0, char* param1, char* param2){
   return;
 }
 
+/* ---------------------------------------------------------------------
+    enable/disable forbidden zone
+ --------------------------------------------------------------------- */
+void commandEnableForbiddenZone(char* param0, char* param1){
+
+  uint8_t i = 0;
+  uint8_t val = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    val = (uint8_t)strtol(param1, (char **)NULL, 10);
+    forbiddenZone[i].active = val;
+  }
+
+  return;
+}
+
 /* =====================================================================
     interrupt routines
 ====================================================================== */
@@ -2861,6 +2888,10 @@ RESET:
 
       case 0x9A:    /* SETFORBZONE */
         commandSetForbiddenZone(commandParam[1], commandParam[2], commandParam[3]);
+        break;
+
+      case 0x9B:    /* ENABFORBZONE */
+        commandEnableForbiddenZone(commandParam[1], commandParam[2]);
         break;
 
       default:

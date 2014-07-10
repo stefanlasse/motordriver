@@ -306,6 +306,14 @@ Example:  SETFORBZONE 0 148 1333
           Defines a forbidden zone for motor 0 between step 148
           and step 1333.
 
+Command:  ENABFORBZONE <mot> <val>
+Function: Enables <val=1> or disables <val=0> the defined
+          forbidden zone for motor <mot>
+Example:  ENABFORBZONE 0 1
+          Enables the forbidden zone for motor 0.
+          ENABFORBZONE 3 0
+          Disables the forbidden zone for motor 3.
+
 -----------------------------------------------------------------
   5. What to do if I got problems?
 -----------------------------------------------------------------
