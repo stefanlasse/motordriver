@@ -1,12 +1,12 @@
 
 =================================================================
 |  MOTORDRIVER MANUAL                                  rev 001  |
-|                                                30. Jun. 2014  |
+|                                                10. Jul. 2014  |
 =================================================================
 
 Contents
 
-0. General information
+0. General information and software
 1. Pin configuration and usage
 2. Initial State and device access
 3. Limitations
@@ -15,10 +15,25 @@ Contents
 
 
 -----------------------------------------------------------------
-  0. General Information
+  0. General Information and software
 -----------------------------------------------------------------
 
 The angular resolution is 0.0675 degree.
+
+0.1 Software
+To use the python-interface for th motordriver one must install
+some software and drivers.
+The interface runs on python in version 2.7. The interface is
+based on a virtual com port (VCP). Under windows some drivers
+are needed. They can be found here:
+http://www.ftdichip.com/Drivers/VCP.htm
+
+In addition to the FTDI VCP driver one must install the python
+package pyserial. This can be found here:
+https://pypi.python.org/pypi/pyserial
+
+For linux install and usage use your appropriated software
+repository.
 
 
 -----------------------------------------------------------------
@@ -116,7 +131,7 @@ To load the last saved motordriver configuration enter
 this menu and turn the rotary encoder in any direction.
 The menu will be leaved automatically when loading has
 finished.
-Note: The last saved configuration is loaded automaically
+Note: The last saved configuration is loaded automatically
 when powering on the motordriver.
 Note: There is just one memory space for a configuration.
 
