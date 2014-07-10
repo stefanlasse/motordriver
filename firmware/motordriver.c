@@ -143,7 +143,7 @@ typedef struct{
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
-  uint8_t  angularVelocity;        /* in seconds per full rotation */
+  int8_t  angularVelocity;        /* in seconds per full rotation */
 
 }motorInfo;
 
@@ -2330,11 +2330,13 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     if(strcmp(param1, "CW")  == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CW;
       motor[i].waitBetweenSteps = waitTime;
+      motor[i].desiredPosition  = motor[i].actualPosition;
       motor[i].desiredPosition += 1;
     }
     if(strcmp(param1, "CCW") == 0){
       motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_CCW;
       motor[i].waitBetweenSteps = waitTime;
+      motor[i].desiredPosition  = motor[i].actualPosition;
       motor[i].desiredPosition += -1;
     }
   }
