@@ -47,7 +47,7 @@
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
-#define NUMBER_OF_PARAMETERS 6          /* amount of parameters to be kept */
+#define NUMBER_OF_PARAMETERS 10          /* amount of parameters to be kept */
 #define PARAMETER_LENGTH 20
 #define ALLOWED_CMD_DELIMITERS " ,;\t"  /* for cmd/parameter separation */
 
@@ -191,6 +191,19 @@ typedef struct{
 
 }zone;
 
+#define MAX_PROGRAM_STEPS 16
+
+#define PROG_ABSOLUTE_MOVEMENT 0
+#define PROG_RELATIVE_MOVEMENT 1
+
+typedef struct{
+
+  uint8_t isActive;
+  int16_t position[MAX_MOTOR];
+  uint8_t absRel;
+
+}progStep;
+
 
 /* ---------------------------------------------------------------------
     command parser stuff
@@ -256,12 +269,14 @@ ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between t
 ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two single steps  */
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
+
 ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
 ADD_COMMAND(26, "SETFORBZONE\0",    3, 0x9A)  /* defines a forbidden zone */
 ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden zone */
+ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 
 
-#define TOTAL_NUMBER_OF_COMMANDS 28
+#define TOTAL_NUMBER_OF_COMMANDS 29
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -272,7 +287,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
-                                              &cmd_27_
+                                              &cmd_27_, &cmd_28_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -326,8 +341,9 @@ ADD_DISPLAY_TEXT(7 , "Save current\nconfiguration\0"   )
 ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
 ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
 ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
+ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
 
-#define NUMBER_OF_DISPLAY_MENUS 11
+#define NUMBER_OF_DISPLAY_MENUS 12
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -340,13 +356,14 @@ ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
 #define MENU_LOAD_CONFIG            8
 #define MENU_OPTICAL_ZERO_POS       9
 #define MENU_CONST_ANGULAR_SPEED    10
+#define MENU_RUN_PROGRAM            11
 
 
 /* to hold a list of menu entries */
 const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
-                                            &disp_9_,  &disp_10_
+                                            &disp_9_,  &disp_10_, &disp_11_
                                            };
 
 /* to keep information where we are in the menu */
@@ -367,6 +384,7 @@ typedef struct{
   uint8_t currentDisplayedMenu;
   uint8_t newMenuMode;
   uint8_t fastMovingMode;
+  int8_t  currentProgramStep;
   uint8_t currentMenuMode;
   uint8_t selectedMotor;          /* keep the selected motor for value changing */
   char**  currentDisplayValue;    /* for values to be changed */
@@ -394,6 +412,7 @@ volatile analog adc;                    /* ADC information */
 volatile menuInfo menu;                 /* information about the menu */
 volatile button buttonState;            /* information on the user interface */
 volatile rotaryEncoder rotEnc;
+volatile progStep programList[MAX_PROGRAM_STEPS];  /* get memory for internal program */
 
 
 /* ---------------------------------------------------------------------
@@ -483,6 +502,8 @@ void  commandSetConstSpeed(char* param0, char* param1, char* param2);
 void  commandFactoryReset(void);
 void  commandSetForbiddenZone(char* param0, char* param1, char* param2);
 void  commandEnableForbiddenZone(char* param0, char* param1);
+void  commandSetProgStep(char* param0, char* param1, char* param2,
+                         char* param3, char* param4, char* param5);
 
 
 /* =====================================================================
@@ -494,7 +515,7 @@ void  commandEnableForbiddenZone(char* param0, char* param1);
  --------------------------------------------------------------------- */
 void initDataStructs(void){
 
-  uint8_t i;
+  uint8_t i, j;
 
   for(i = 0; i <= MAX_MOTOR; i++){
     motor[i].actualPosition       = 0;
@@ -530,6 +551,7 @@ void initDataStructs(void){
   menu.currentDisplayedMenu = 42;
   menu.newMenuMode = MENU_SCROLL_MODE;
   menu.fastMovingMode = OFF;
+  menu.currentProgramStep = 0;
   menu.currentMenuMode = 42;
   menu.selectedMotor = NO_MOTOR;
   /* strings are initialized in main */
@@ -547,6 +569,18 @@ void initDataStructs(void){
     forbiddenZone[i].start  = 0;
     forbiddenZone[i].stop   = 0;
   }
+
+  /* initialize program list */
+  for(i = 0; i < MAX_PROGRAM_STEPS; i++){
+    programList[i].isActive = 0;
+    programList[i].absRel = PROG_RELATIVE_MOVEMENT;
+    for(j = 0; j <= MAX_MOTOR; j++){
+      programList[i].position[j] = 0;
+    }
+  }
+  /* define home position on program step 0 */
+  programList[0].isActive = 1;
+  programList[0].absRel = PROG_RELATIVE_MOVEMENT;
 
   return;
 }
@@ -1519,6 +1553,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       }
       break;
 
+    case MENU_RUN_PROGRAM:
+      sprintf(menu.newDisplayValue[0], "Program ");
+      sprintf(menu.newDisplayValue[1], "running ");
+      sprintf(menu.newDisplayValue[2], "Step %d" , menu.currentProgramStep);
+      sprintf(menu.newDisplayValue[3], "        ");
+      break;
+
     default:  /* in case of fire ;-) */
       break;
   }
@@ -1780,6 +1821,43 @@ void updateMenu(void){
               }
               setConstSpeed(i, motor[i].angularVelocity);
             }
+          }
+          break;
+
+        case MENU_RUN_PROGRAM:
+          if(rotEncVal > 0){
+            do{
+              /* find the next active program step */
+              menu.currentProgramStep += 1;
+              if(menu.currentProgramStep >= MAX_PROGRAM_STEPS){
+                menu.currentProgramStep = 0;
+              }
+            }while(programList[menu.currentProgramStep].isActive == 0);
+          }
+
+          if(rotEncVal < 0){
+            do{
+              /* find the next active program step */
+              menu.currentProgramStep += -1;
+              if(menu.currentProgramStep < 0){
+                menu.currentProgramStep = MAX_PROGRAM_STEPS - 1;
+              }
+            }while(programList[menu.currentProgramStep].isActive == 0);
+          }
+
+          if(programList[menu.currentProgramStep].absRel == PROG_ABSOLUTE_MOVEMENT){
+            for(i = 0; i <= MAX_MOTOR; i++){
+              motor[i].desiredPosition = programList[menu.currentProgramStep].position[i];
+            }
+          }
+          else if(programList[menu.currentProgramStep].absRel == PROG_RELATIVE_MOVEMENT){
+            for(i = 0; i <= MAX_MOTOR; i++){
+              motor[i].desiredPosition = motor[i].actualPosition
+                                         + programList[menu.currentProgramStep].position[i];
+            }
+          }
+          else{
+            ;
           }
           break;
 
@@ -2471,6 +2549,58 @@ void commandEnableForbiddenZone(char* param0, char* param1){
   return;
 }
 
+
+/* ---------------------------------------------------------------------
+    define a program step
+
+    param0: program step number
+    param1: position for moror 0
+    param2: position for moror 1
+    param3: position for moror 2
+    param4: position for moror 3
+    param5: absolute or relative movement
+
+    always gets param1..param4 in steps (calculated by python interface)
+ --------------------------------------------------------------------- */
+void commandSetProgStep(char* param0, char* param1, char* param2,
+                        char* param3, char* param4, char* param5){
+
+
+  uint8_t step, i;
+
+  step = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(step >= MAX_PROGRAM_STEPS){
+    /* not more than MAX_PROGAM_STEPS allowed */
+    return;
+  }
+
+  if(strcmp(param5, "NONE") == 0){
+    programList[step].isActive = 0;
+    programList[step].absRel = PROG_RELATIVE_MOVEMENT;
+    for(i = 0; i <= MAX_MOTOR; i++){
+      programList[step].position[i] = 0;
+    }
+    return;
+  }
+
+  programList[step].isActive = 1;
+
+  programList[step].position[0] = (int16_t)strtol(param1, (char **)NULL, 10);
+  programList[step].position[1] = (int16_t)strtol(param2, (char **)NULL, 10);
+  programList[step].position[2] = (int16_t)strtol(param3, (char **)NULL, 10);
+  programList[step].position[3] = (int16_t)strtol(param4, (char **)NULL, 10);
+
+  if(strcmp(param5, "ABS") == 0){
+    programList[step].absRel = PROG_ABSOLUTE_MOVEMENT;
+  }
+  if(strcmp(param5, "REL") == 0){
+    programList[step].absRel = PROG_RELATIVE_MOVEMENT;
+  }
+
+  return;
+}
+
 /* =====================================================================
     interrupt routines
 ====================================================================== */
@@ -2892,6 +3022,11 @@ RESET:
 
       case 0x9B:    /* ENABFORBZONE */
         commandEnableForbiddenZone(commandParam[1], commandParam[2]);
+        break;
+
+      case 0x9C:    /* SETPROGSTEP */
+        commandSetProgStep(commandParam[1], commandParam[2], commandParam[3],
+                           commandParam[4], commandParam[5], commandParam[6]);
         break;
 
       default:

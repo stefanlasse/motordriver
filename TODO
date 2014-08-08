@@ -13,34 +13,9 @@ zum Geraet:
 
 - erkennen welche / wieviele Motoren angeschlossen sind / Display anpassen
 
-- ein (oder mehrere) Programm(e) erlauben, welches relative Schritte,
-bzw. auf absolute Positionen geht.
-
-- zum Motorauswaehlen vor&zurueck Buttons:
-
-Zurueck | M1 / M2 / M3 / M4 / All / Rel1 / Rel2 / P1 / P2 | Vor
-
-Erklaerung:
-= M1, M2, M3, M4 (Motor 1-4, einzeln ansteuern)
-= All (Alle Motoren bewegen sich gleich)
-= Rel1 / Rel2 (je nach 'rel'-program, z.B. M2 = 2*M1, doppelt schnell)
-= P1/P2 (gespeicherte Positionen anfahren, abs. oder relativ)
 
 
-zum Befehlssatz (was noch so gut waere):
 
-
-- setmem (setze im speicher zur position XX)
--- z.B. setmem 3 0 90 180 90 a
-(dies ist der dritte Schritt im Program / setzt Motor 1 auf 0 Grad,
-Motor 2 auf 90 Grad, Motor 3 auf 180 Grad, Motor 4 auf 90 Grad und sagt
-das das eine Absolutposition ist)
-wenn Schritt = 'setmem 7 -1 -1 -1 -1 a' ist, dann geht es ab Schritt 7
-wieder auf Anfang.
-- getmem (lese im speicher was ist pos XX)
-- gomem XX (geht auf Stellung XX)
-- nogo XX yy zz (ermoeglicht einen gewissen Bereich zu verbieten, z.B.
-weil dann die Power zu hoch wird)
 
 
 
