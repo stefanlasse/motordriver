@@ -203,6 +203,12 @@ Note:     The maximum number of characters is 20.
 Example:  *IDN NewName
           Sets the string "NewName" as IDN.
 
+Command:  GETMOTSTATE <mot>
+Function: Returns whether motor <mot> is turned on or off.
+Example:  GETMOTSTATE 3
+          Returns 1 if motor 3 is turned on or 0 if
+          motor 3 is turned off.
+
 Command:  MOVEABS <mot> <pos> <unit>
 Function: Moves motor <mot> to the absolute position <pos> <unit>
           The units can be steps, degree or radians.
@@ -313,6 +319,25 @@ Example:  ENABFORBZONE 0 1
           Enables the forbidden zone for motor 0.
           ENABFORBZONE 3 0
           Disables the forbidden zone for motor 3.
+
+Command:  SETPROGSTEP <step> <posMot0> <posMot1> <posMot2> <posMot3>  <mode>
+Function: Defines an internal program step for all four motors.
+          <step> is the program sequence number.
+          The position of all motors <posMot0..4> must be given
+          in steps. The mode defines is the movement is to an
+          absolute position <mode=ABS> or is the movement is
+          ralative to the current motor position <mode=REL>.
+Example:  SETPROGSTEP 0 112 294 0 12 ABS
+          Defines the internal program step 0 so that
+          motor 0 moves to step 112, motor 1 moves to step 294,
+          motor 2 moves to step 0 and motor 3 moves to step 12.
+          SETPROGSTEP 1 10 10 -10 -10 REL
+          Defines the internal program step 1 so that motor 0 and
+          motor 1 move 10 steps forward relative to the actual
+          position and motor 2 and 3 move 10 steps backwards to
+          the actual position.
+
+
 
 -----------------------------------------------------------------
   5. What to do if I got problems?
