@@ -66,18 +66,19 @@
 #define ON  1
 #define OFF 0
 
-#define NO_MOTOR  0
-#define MOTOR0    0 /* set as places to shift */
-#define MOTOR1    1
-#define MOTOR2    2
-#define MOTOR3    3
-#define MAX_MOTOR MOTOR3
+#define NO_MOTOR            0
+#define MOTOR0              0 /* set as places to shift */
+#define MOTOR1              1
+#define MOTOR2              2
+#define MOTOR3              3
+#define DUMMY_MOTOR         4
+#define MAX_MOTOR           MOTOR3
 
-#define MOTOR_SENS0     PA0
-#define MOTOR_SENS1     PA1
-#define MOTOR_SENS2     PA2
-#define MOTOR_SENS3     PA3
-#define MOTOR_SENS_MAX  MOTOR_SENS3
+#define MOTOR_SENS0         PA0
+#define MOTOR_SENS1         PA1
+#define MOTOR_SENS2         PA2
+#define MOTOR_SENS3         PA3
+#define MOTOR_SENS_MAX      MOTOR_SENS3
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
@@ -199,7 +200,7 @@ typedef struct{
 typedef struct{
 
   uint8_t isActive;
-  int16_t position[MAX_MOTOR];
+  int16_t position[MAX_MOTOR + 1];
   uint8_t absRel;
 
 }progStep;
@@ -263,9 +264,9 @@ ADD_COMMAND(15, "GETGEARRATIO\0",   1, 0x8F)  /* returns the mechanical gear rat
 ADD_COMMAND(16, "SETGEARRATIO\0",   2, 0x90)  /* set mechanical gear ratio for a motor */
 ADD_COMMAND(17, "GETFULLROT\0",     1, 0x91)  /* returns steps per full rotation */
 ADD_COMMAND(18, "SETFULLROT\0",     2, 0x92)  /* sets steps per full rotation */
-ADD_COMMAND(19, "GETSUBSTEPS\0",    1, 0x93)  /* retuns the adjusted substeps  */
+ADD_COMMAND(19, "GETSUBSTEPS\0",    1, 0x93)  /* returns the adjusted substeps  */
 ADD_COMMAND(20, "SETSUBSTEPS\0",    2, 0x94)  /* sets the substeps for a motor */
-ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between two singele steps */
+ADD_COMMAND(21, "GETWAITTIME\0",    1, 0x95)  /* returns the wait time between two single steps */
 ADD_COMMAND(22, "SETWAITTIME\0",    2, 0x96)  /* sets the wait time between two single steps  */
 ADD_COMMAND(23, "SETCONSTSPEED\0",  3, 0x97)  /* sets a constant angular velocity */
 ADD_COMMAND(24, "FACTORYRESET\0",   0, 0x98)  /* factory reset */
@@ -274,9 +275,11 @@ ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
 ADD_COMMAND(26, "SETFORBZONE\0",    3, 0x9A)  /* defines a forbidden zone */
 ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden zone */
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
+ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manual operation */
+ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
 
 
-#define TOTAL_NUMBER_OF_COMMANDS 29
+#define TOTAL_NUMBER_OF_COMMANDS 31
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -287,7 +290,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_18_, &cmd_19_, &cmd_20_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
-                                              &cmd_27_, &cmd_28_
+                                              &cmd_27_, &cmd_28_, &cmd_29_,
+                                              &cmd_30_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -504,6 +508,8 @@ void  commandSetForbiddenZone(char* param0, char* param1, char* param2);
 void  commandEnableForbiddenZone(char* param0, char* param1);
 void  commandSetProgStep(char* param0, char* param1, char* param2,
                          char* param3, char* param4, char* param5);
+void commandGetMotorState(char* param0);
+void commandDebugReadout(void);
 
 
 /* =====================================================================
@@ -531,7 +537,7 @@ void initDataStructs(void){
     motor[i].stepMultiplier       = 1.0f;
     motor[i].stepUnit             = MOTOR_STEP_UNIT_DEGREE;
     motor[i].waitBetweenSteps     = 3;
-    motor[i].delayCounter         = motor[i].waitBetweenSteps;
+    motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
   }
 
@@ -580,7 +586,6 @@ void initDataStructs(void){
   }
   /* define home position on program step 0 */
   programList[0].isActive = 1;
-  programList[0].absRel = PROG_RELATIVE_MOVEMENT;
 
   return;
 }
@@ -752,7 +757,7 @@ void initMotorDelayTimer(void){
    */
 
   TCCR2A |= (1<<WGM21);   /* enable CTC */
-  OCR2A   = 115;
+  OCR2A   = 77;
   TIMSK2 |= (1<<OCIE2A);  /* enable interrupt */
   TCNT2   = 0;
 
@@ -1243,7 +1248,7 @@ double stepsToDegree(uint8_t mot, int16_t steps){
 }
 
 /* ---------------------------------------------------------------------
-   set desired motor position if unit is degree
+   set desired motor position if unit is radian
  --------------------------------------------------------------------- */
 void radiansToSteps(uint8_t mot, double rad, double multiply){
 
@@ -1418,7 +1423,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   menuItem *menuPtr;
 
   uint8_t sLen;
-
   uint8_t c = 0;
 
   /* determine which values shall be changed */
@@ -1513,6 +1517,9 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_SAVE_CONFIG:
+      /* select the dummy motor */
+      menu.selectedMotor ^= (1 << DUMMY_MOTOR);
+      menu.newMenuMode = MENU_VALUE_CHANGE;
       sprintf(menu.newDisplayValue[0], "Save all");
       sprintf(menu.newDisplayValue[1], " current");
       sprintf(menu.newDisplayValue[2], "configur");
@@ -1520,6 +1527,9 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       break;
 
     case MENU_LOAD_CONFIG:
+      /* select the dummy motor */
+      menu.selectedMotor ^= (1 << DUMMY_MOTOR);
+      menu.newMenuMode = MENU_VALUE_CHANGE;
       sprintf(menu.newDisplayValue[0], "Load all");
       sprintf(menu.newDisplayValue[1], " saved  ");
       sprintf(menu.newDisplayValue[2], "configur");
@@ -1528,7 +1538,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_OPTICAL_ZERO_POS:
       for(i = 0; i <= MAX_MOTOR; i++){
-        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        c = ' ';
+        if(menu.selectedMotor & (1 << i)){
+          c = 0x7E;
+          if(menu.fastMovingMode){
+            c = 0x3E;
+          }
+        }
         sprintf(menu.newDisplayValue[i], "%c%dst", c, motor[i].opticalZeroPosition);
       }
       break;
@@ -1735,6 +1751,7 @@ void updateMenu(void){
                 /* wait time is at least 1 ms */
                 motor[i].waitBetweenSteps = 1;
               }
+              motor[i].delayCounter = 2*motor[i].waitBetweenSteps-1;
             }
           }
           break;
@@ -1772,26 +1789,34 @@ void updateMenu(void){
               if(motor[i].subSteps < 1){
                 motor[i].subSteps = 1;
               }
-              if(motor[i].subSteps > 8){
-                motor[i].subSteps = 8;
+              if(motor[i].subSteps > 32){
+                motor[i].subSteps = 32;
               }
             }
           }
           break;
 
-        case MENU_SAVE_CONFIG:   /* save actual configuration */
+        case MENU_SAVE_CONFIG:   /* save current configuration */
           saveConfigToEEPROM();
-          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.selectedMotor ^= (1 << DUMMY_MOTOR);
           menu.currentDisplayedMenu += 1;
+          lcd_clear();
+          lcd_string("saved");
+          _delay_ms(500);
+          menu.newMenuMode = MENU_SCROLL_MODE;
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
-          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.selectedMotor ^= (1 << DUMMY_MOTOR);
           menu.currentDisplayedMenu += 1;
+          lcd_clear();
+          lcd_string("loaded");
+          _delay_ms(500);
+          menu.newMenuMode = MENU_SCROLL_MODE;
           break;
 
-        case MENU_OPTICAL_ZERO_POS:
+        case MENU_OPTICAL_ZERO_POS: /* define the optical zero position */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               if(menu.fastMovingMode){
@@ -1804,7 +1829,7 @@ void updateMenu(void){
           }
           break;
 
-        case MENU_CONST_ANGULAR_SPEED:
+        case MENU_CONST_ANGULAR_SPEED:  /* enter constand moving mode */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               if(forbiddenZone[i].active){
@@ -1824,7 +1849,7 @@ void updateMenu(void){
           }
           break;
 
-        case MENU_RUN_PROGRAM:
+        case MENU_RUN_PROGRAM:  /* run an internal program defined by CLI */
           if(rotEncVal > 0){
             do{
               /* find the next active program step */
@@ -2554,17 +2579,16 @@ void commandEnableForbiddenZone(char* param0, char* param1){
     define a program step
 
     param0: program step number
-    param1: position for moror 0
-    param2: position for moror 1
-    param3: position for moror 2
-    param4: position for moror 3
+    param1: position for motor 0
+    param2: position for motor 1
+    param3: position for motor 2
+    param4: position for motor 3
     param5: absolute or relative movement
 
     always gets param1..param4 in steps (calculated by python interface)
  --------------------------------------------------------------------- */
 void commandSetProgStep(char* param0, char* param1, char* param2,
                         char* param3, char* param4, char* param5){
-
 
   uint8_t step, i;
 
@@ -2584,12 +2608,12 @@ void commandSetProgStep(char* param0, char* param1, char* param2,
     return;
   }
 
-  programList[step].isActive = 1;
-
   programList[step].position[0] = (int16_t)strtol(param1, (char **)NULL, 10);
   programList[step].position[1] = (int16_t)strtol(param2, (char **)NULL, 10);
   programList[step].position[2] = (int16_t)strtol(param3, (char **)NULL, 10);
   programList[step].position[3] = (int16_t)strtol(param4, (char **)NULL, 10);
+
+  programList[step].isActive = 1;
 
   if(strcmp(param5, "ABS") == 0){
     programList[step].absRel = PROG_ABSOLUTE_MOVEMENT;
@@ -2600,6 +2624,56 @@ void commandSetProgStep(char* param0, char* param1, char* param2,
 
   return;
 }
+
+/* ---------------------------------------------------------------------
+    returns the on/off state of a motor
+ --------------------------------------------------------------------- */
+void commandGetMotorState(char* param0){
+
+  uint8_t i = 0;
+  uint8_t val = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    if(motor[i].isTurnedOn){
+      sprintf(txString.buffer, "1");
+    }
+    else{
+      sprintf(txString.buffer, "0");
+    }
+
+    sendText(txString.buffer);
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    debugging output for anything we'd like to know
+ --------------------------------------------------------------------- */
+void commandDebugReadout(){
+
+  uint8_t i = 0;
+
+  for(i = 0; i < MAX_PROGRAM_STEPS; i++){
+    sprintf(txString.buffer, "%d %d %d %d %d %d %d", i, programList[i].position[0],
+                                                        programList[i].position[1],
+                                                        programList[i].position[2],
+                                                        programList[i].position[3],
+                                                        programList[i].absRel,
+                                                        programList[i].isActive);
+    sendText(txString.buffer);
+  }
+
+  return;
+}
+
 
 /* =====================================================================
     interrupt routines
@@ -2776,7 +2850,7 @@ ISR(TIMER2_COMPA_vect){
           outputStep |= (1 << (2*i));
         }
         /* so we will move and therefore set back the delay counter */
-        motor[i].delayCounter = motor[i].waitBetweenSteps;
+        motor[i].delayCounter = 2*motor[i].waitBetweenSteps-1;
       }
     }
   }
@@ -3027,6 +3101,14 @@ RESET:
       case 0x9C:    /* SETPROGSTEP */
         commandSetProgStep(commandParam[1], commandParam[2], commandParam[3],
                            commandParam[4], commandParam[5], commandParam[6]);
+        break;
+
+      case 0x9D:    /* GETMOTSTATE */
+        commandGetMotorState(commandParam[1]);
+        break;
+
+      case 0x9E:
+        commandDebugReadout();
         break;
 
       default:
