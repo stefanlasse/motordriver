@@ -54,8 +54,18 @@ def measureStokesParameterAbs():
   print "got S3"
   return
 
+
+def setStokesProgramToDriver():
+  driver.defineInternalProgramStep(0, [0.0, 0.0, 0.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
+  driver.defineInternalProgramStep(1, [45.0, 0, 22.5, 0.0], driver.DEGREE, driver.ABSOLUTE)
+  driver.defineInternalProgramStep(2, [45.0, 0, 45.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
+
+
+
 # --------------------------------------------------------------------------
-for i in range(25000):
+setStokesParameterToDriver()
+
+for i in range(10):
   print "Meas " + str(i)  
   measureStokesParameterAbs()
   print " "
