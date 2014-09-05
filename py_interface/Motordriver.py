@@ -190,6 +190,13 @@ class Motordriver():
     
     self.__sendCommand("*IDN " + id)
     return
+  
+  # --------------------------------------------------------------------------
+  def goHome(self):
+    self.moveToAbsolutePosition(0, 0, self.STEPS)
+    self.moveToAbsolutePosition(1, 0, self.STEPS)
+    self.moveToAbsolutePosition(2, 0, self.STEPS)
+    self.moveToAbsolutePosition(3, 0, self.STEPS)
     
   # --------------------------------------------------------------------------
   def moveToAbsolutePosition(self, motor=0, pos=0, unit=DEGREE):

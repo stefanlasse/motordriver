@@ -63,7 +63,7 @@ def setStokesProgramToDriver():
 
 
 # --------------------------------------------------------------------------
-setStokesParameterToDriver()
+setStokesProgramToDriver()
 
 for i in range(10):
   print "Meas " + str(i)  
