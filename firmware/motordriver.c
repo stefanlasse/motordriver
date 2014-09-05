@@ -559,7 +559,7 @@ void initDataStructs(void){
   menu.fastMovingMode = OFF;
   menu.currentProgramStep = 0;
   menu.currentMenuMode = 42;
-  menu.selectedMotor = NO_MOTOR;
+  menu.selectedMotor = NO_MOTOR|(1<<DUMMY_MOTOR);  /* DUMMY_MOTOR stays always selected */
   /* strings are initialized in main */
 
   buttonState.inputRegister = 0;
@@ -1518,8 +1518,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_SAVE_CONFIG:
       /* select the dummy motor */
-      menu.selectedMotor ^= (1 << DUMMY_MOTOR);
-      menu.newMenuMode = MENU_VALUE_CHANGE;
       sprintf(menu.newDisplayValue[0], "Save all");
       sprintf(menu.newDisplayValue[1], " current");
       sprintf(menu.newDisplayValue[2], "configur");
@@ -1528,8 +1526,6 @@ void updateDisplayChangeValues(uint8_t thisMenu){
 
     case MENU_LOAD_CONFIG:
       /* select the dummy motor */
-      menu.selectedMotor ^= (1 << DUMMY_MOTOR);
-      menu.newMenuMode = MENU_VALUE_CHANGE;
       sprintf(menu.newDisplayValue[0], "Load all");
       sprintf(menu.newDisplayValue[1], " saved  ");
       sprintf(menu.newDisplayValue[2], "configur");
@@ -1798,22 +1794,14 @@ void updateMenu(void){
 
         case MENU_SAVE_CONFIG:   /* save current configuration */
           saveConfigToEEPROM();
-          menu.selectedMotor ^= (1 << DUMMY_MOTOR);
-          menu.currentDisplayedMenu += 1;
           lcd_clear();
           lcd_string("saved");
-          _delay_ms(500);
-          menu.newMenuMode = MENU_SCROLL_MODE;
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
-          menu.selectedMotor ^= (1 << DUMMY_MOTOR);
-          menu.currentDisplayedMenu += 1;
           lcd_clear();
           lcd_string("loaded");
-          _delay_ms(500);
-          menu.newMenuMode = MENU_SCROLL_MODE;
           break;
 
         case MENU_OPTICAL_ZERO_POS: /* define the optical zero position */
