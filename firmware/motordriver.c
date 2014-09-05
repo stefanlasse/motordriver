@@ -43,11 +43,11 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION ("v1.3")
+#define FW_VERSION (" 1.4beta")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
-#define NUMBER_OF_PARAMETERS 10          /* amount of parameters to be kept */
+#define NUMBER_OF_PARAMETERS 10         /* amount of parameters to be kept */
 #define PARAMETER_LENGTH 20
 #define ALLOWED_CMD_DELIMITERS " ,;\t"  /* for cmd/parameter separation */
 
@@ -96,6 +96,11 @@
                      (1<<BUTTON_MOTOR3)|     \
                      (1<<BUTTON_MENUESCAPE)| \
                      (1<<BUTTON_ROT_ENC))
+
+/* ---------------------------------------------------------------------
+    compiling options
+ --------------------------------------------------------------------- */
+#define SAVE_INTERNAL_PROGRAM_TO_EEPROM           1
 
 
 /* ---------------------------------------------------------------------
@@ -436,6 +441,7 @@ uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStopEE[MAX_MOTOR+1];
+progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 
 
 /* ---------------------------------------------------------------------
@@ -949,6 +955,14 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(forbiddenZone[i].start), &(forbiddenZoneStartEE[i]), sizeof(int16_t));
       eeprom_update_block(&(forbiddenZone[i].stop), &(forbiddenZoneStopEE[i]), sizeof(int16_t));
     }
+
+#if SAVE_INTERNAL_PROGRAM_TO_EEPROM
+    /* save internal stored programs */
+    for(i = 0; i < MAX_PROGRAM_STEPS; i++){
+      eeprom_update_block(&(programList[i]), &(programListEE[i]), sizeof(progStep));
+    }
+#endif
+
   }
 
   return;
@@ -979,6 +993,14 @@ void loadConfigFromEEPROM(void){
         forbiddenZone[i].active = 1;
       }
     }
+
+#if SAVE_INTERNAL_PROGRAM_TO_EEPROM
+    /* load internal stores programs */
+    for(i = 0; i < MAX_PROGRAM_STEPS; i++){
+      eeprom_read_block(&(programList[i]), &(programListEE[i]), sizeof(progStep));
+    }
+#endif
+
   }
 
   return;
@@ -1434,7 +1456,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_MAIN:   /* main menu point, no values here to change */
       sprintf(menu.newDisplayValue[0], "3.PI  Un");
       sprintf(menu.newDisplayValue[1], "i Stutt.");
-      sprintf(menu.newDisplayValue[2], "Version");
+      sprintf(menu.newDisplayValue[2], "Firmware");
       sprintf(menu.newDisplayValue[3], FW_VERSION);
       break;
 
@@ -1713,7 +1735,7 @@ void updateMenu(void){
 
                 case MOTOR_STEP_UNIT_RADIAN:
                   /* default step is pi/8 */
-                  /* pi/8 is fast enough, so no fast moving mode here */
+                  /* pi/8 is far enough, so no fast moving mode here */
                   radiansToSteps(i, (rotEncVal)*0.125, motor[i].stepMultiplier);
                   break;
 
@@ -1742,7 +1764,6 @@ void updateMenu(void){
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               motor[i].waitBetweenSteps += rotEncVal;
-
               if(motor[i].waitBetweenSteps < 1){
                 /* wait time is at least 1 ms */
                 motor[i].waitBetweenSteps = 1;
@@ -1817,7 +1838,7 @@ void updateMenu(void){
           }
           break;
 
-        case MENU_CONST_ANGULAR_SPEED:  /* enter constand moving mode */
+        case MENU_CONST_ANGULAR_SPEED:  /* enter constant moving mode */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               if(forbiddenZone[i].active){
