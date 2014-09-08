@@ -43,7 +43,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION (" 1.4beta")
+#define FW_VERSION (" 1.4")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -537,7 +537,7 @@ void initDataStructs(void){
     motor[i].isMoving             = 0;
     motor[i].isTurnedOn           = 0;
     motor[i].isMovingInfinite     = MOTOR_MOVE_INFINITE_STOP;
-    motor[i].gearRatio            = 60.0f/18.0f;
+    motor[i].gearRatio            = 60.0f/18.0f; /* TODO */
     motor[i].stepsPerFullRotation = 400.0f;
     motor[i].subSteps             = 4.0f;
     motor[i].stepMultiplier       = 1.0f;
@@ -1928,7 +1928,7 @@ void initManualOperatingButtons(void){
    */
 
   TCCR0A |= (1<<WGM01);   /* enable CTC */
-  OCR0A   = 200;          /* (97+1)*51.2 us --> interrupt every 5.0176 ms */
+  OCR0A   = 80;           /* 80 is an empirical value for best behavior of the rotEnc. */
   TIMSK0 |= (1<<OCIE0A);  /* enable interrupt */
   TCNT0   = 0;
 
