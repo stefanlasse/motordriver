@@ -537,7 +537,7 @@ void initDataStructs(void){
     motor[i].isMoving             = 0;
     motor[i].isTurnedOn           = 0;
     motor[i].isMovingInfinite     = MOTOR_MOVE_INFINITE_STOP;
-    motor[i].gearRatio            = 60.0f/18.0f; /* TODO */
+    motor[i].gearRatio            = 60.0f/20.0f; /* TODO */
     motor[i].stepsPerFullRotation = 400.0f;
     motor[i].subSteps             = 4.0f;
     motor[i].stepMultiplier       = 1.0f;
