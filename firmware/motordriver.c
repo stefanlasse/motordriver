@@ -1908,7 +1908,126 @@ void updateMenu(void){
 }
 
 
+/* =====================================================================
+    I2C subsystem
 
+  code to communicate with I2C devices @ 400 kHz SCL
+
+  For F_CPU = 20 MHz:
+  TWPS = 0
+  TWBR = 34  (400 kHz SCL)
+  TWBR = 184 (100 kHz SCL)
+
+====================================================================== */
+
+/* ---------------------------------------------------------------------
+   initialize I2C system
+ --------------------------------------------------------------------- */
+void initIIC(void){
+
+  TWBR = 34;
+
+  TWCR = (1<<TWEN);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   write a START condition on the bus
+ --------------------------------------------------------------------- */
+void IICstart(void){
+
+  TWCR = (1<<TWINT)|(1<<TWSTA);   /* send START */
+
+  /* wait till START has been transmitted */
+  while(!(TWCR & (1<<TWINT))){
+    ;
+  }
+
+  if((TWSR & 0xF8) != TW_START){
+    /* ERROR handling required */
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   write a STOP condition on the bus
+ --------------------------------------------------------------------- */
+void IICstop(void){
+
+  TWCR = (1<<TWINT)|(1<<TWSTO);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   send an I2C byte
+
+   note: returning 0 is pass, returning 1 is fail (no ACK)
+ --------------------------------------------------------------------- */
+uint8_t IICbyte(uint8_t data){
+
+  uint8_t success = 0;
+
+  TWDR = data;
+  TWCR = (1<<TWINT);
+  while(!(TWCR & (1<<TWINT))){
+    ;
+  }
+  if((TWSR & 0xF8) != TW_MT_SLA_ACK){
+    success = 1;
+  }
+
+  return success;
+}
+
+/* ---------------------------------------------------------------------
+   write a number of bytes to an I2C address
+ --------------------------------------------------------------------- */
+void IICwrite(uint8_t addr, uint8_t* data, uint8_t numDat, uint8_t rw){
+
+  uint8_t i = 0;
+  uint8_t iicAddr = 0;
+
+  if(rw != IIC_READ && rw != IIC_WRITE){
+    return;
+  }
+
+  iicAddr = addr | rw;
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    IICstart();
+
+    /* address the slave */
+    if(IICbyte(iicAddr)){
+      /* ERROR handling */
+    }
+
+    /* now send data */
+    for(i = 0; i < numDat; i++){
+      if(IICbyte(data[i])){
+        /* ERROR handling */
+      }
+    }
+
+    IICstop();
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   read a byte from an I2C slave
+ --------------------------------------------------------------------- */
+uint8_t IICread(uint8_t addr){
+
+  uint8_t val;
+
+  /* TODO */
+
+  return val;
+}
 
 /* =====================================================================
     Manual operation subsystem
