@@ -1,7 +1,7 @@
 
 =================================================================
 |  MOTORDRIVER MANUAL                                  rev 001  |
-|                                                10. Jul. 2014  |
+|                                                8. Sept. 2014  |
 =================================================================
 
 Contents
@@ -166,8 +166,8 @@ When no configuration is saved the motordriver comes up in its
 factory configuration. The factory configuration can be restored
 with the FACTORYRESET command as described in chapter 4.
 
-After power up the Motordriver is accessible via a serial port 
-from a PC. The configuration of the RS232 interface is:
+After power up the Motordriver is accessible via a virtual serial
+port from a PC. The configuration of the RS232 interface is:
   - 57600 Baud
   - 8 bit character size
   - no parity bit
