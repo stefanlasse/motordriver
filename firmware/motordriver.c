@@ -104,6 +104,26 @@
 
 
 /* ---------------------------------------------------------------------
+    IIC addresses and other stuff
+ --------------------------------------------------------------------- */
+#define IIC_WRITE   0
+#define IIC_READ    1
+
+
+#define IIC_MOTOR0_PORTEXP_ADDR     0x42
+#define IIC_MOTOR0_DAC_ADDR         0x12
+
+#define IIC_MOTOR1_PORTEXP_ADDR     0x44
+#define IIC_MOTOR1_DAC_ADDR         0x14
+
+#define IIC_MOTOR2_PORTEXP_ADDR     0x46
+#define IIC_MOTOR2_DAC_ADDR         0x9A
+
+#define IIC_MOTOR3_PORTEXP_ADDR     0x48
+#define IIC_MOTOR3_DAC_ADDR         0x9C
+
+
+/* ---------------------------------------------------------------------
     data structures
  --------------------------------------------------------------------- */
 
@@ -748,6 +768,24 @@ void setMotorState(uint8_t mot, uint8_t state){
     DDRC &= ~(1 << mot);          /* moving direction pin */
     DDRC &= ~(1 << (mot + 4));    /* stepping pin */
   }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    defines the motor current via DAC081C085 (I2C)
+    http://www.ti.com.cn/cn/lit/ds/symlink/dac081c085.pdf
+    Notes:
+    - keeps DAC always in normal operation mode, no power-down
+ --------------------------------------------------------------------- */
+void setMotorCurrent(uint8_t addr, uint8_t curr){
+
+  uint8_t data[2];
+
+  data[0] = ((curr & 0xF0) >> 4) & 0x0F;
+  data[1] = ((curr & 0x0F) >> 4) & 0xF0;
+
+  IICwrite(addr, data, 2, IIC_WRITE);
 
   return;
 }
