@@ -1,1 +1,11 @@
 - erkennen welche Motoren angeschlossen sind
+
+- I2C gedöns implementieren
+- I2C adressen abstrahieren
+
+- seriennummer einpflegen
+- kunden caldaten satz (nur werksseitig änderbar) für factory reset und init-state
+
+- nochmals über kommando-satz nachdenken: implementierung mit "?"
+
+- zero run verbessern (in timer-interrupt einbauen)
