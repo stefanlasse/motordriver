@@ -2136,6 +2136,8 @@ void commandEnable(char* param0, char* param1){
   i   = (uint8_t)strtol(param0, (char **)NULL, 10);
   val = (uint8_t)strtol(param1, (char **)NULL, 10);
 
+
+
   if(i > MAX_MOTOR){
     return;
   }
@@ -2145,6 +2147,7 @@ void commandEnable(char* param0, char* param1){
     }
     else{
       setMotorState(i, OFF);
+      sendChar('a');
     }
   }
 
