@@ -946,6 +946,8 @@ void motorZeroRun(uint8_t i){
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
 
+  resetMotorLogic(i);
+
   /* allow motor movements again */
   initMotorDelayTimer();
 
@@ -2264,7 +2266,7 @@ void initPortExpander(uint8_t addr){
     IIC.data[0] = 0x09; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);  /* INTCONB */
     IIC.data[0] = 0x0C; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPPUA */
     IIC.data[0] = 0x0D; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPPUB */
-    IIC.data[0] = 0x12; IIC.data[1] = 0x70; IICwrite(addr, IIC.data, 2);  /* GPIOA */
+    IIC.data[0] = 0x12; IIC.data[1] = 0x78; IICwrite(addr, IIC.data, 2);  /* GPIOA */
     IIC.data[0] = 0x13; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPIOB */
   }
 
@@ -2358,6 +2360,7 @@ uint8_t getSubSteps(uint8_t mot){
 
 /* ---------------------------------------------------------------------
     setMotorState: turns motor on/off
+    nENBL: active low
  --------------------------------------------------------------------- */
 void setMotorState(uint8_t mot, uint8_t state){
 
@@ -2368,10 +2371,10 @@ void setMotorState(uint8_t mot, uint8_t state){
   regval = readPortExpanderRegister(addr, 0x12);
 
   if(state){
-    regval |= (1<<PORTEXP_MOTOR_ENABLE);
+    regval &= ~(1<<PORTEXP_MOTOR_ENABLE);
   }
   else{
-    regval &= ~(1<<PORTEXP_MOTOR_ENABLE);
+    regval |= (1<<PORTEXP_MOTOR_ENABLE);
   }
 
   writePortExpanderRegister(addr, 0x12, regval);
@@ -2379,6 +2382,89 @@ void setMotorState(uint8_t mot, uint8_t state){
 
   return;
 }
+
+/* ---------------------------------------------------------------------
+     sets the motor decay (SLOW = 0, FAST = 1)
+ --------------------------------------------------------------------- */
+void setMotorDecay(uint8_t mot, uint8_t state){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, 0x12);
+
+  if(state){
+    regval &= ~(1<<PORTEXP_MOTOR_DECAY);
+  }
+  else{
+    regval |= (1<<PORTEXP_MOTOR_DECAY);
+  }
+
+  writePortExpanderRegister(addr, 0x12, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     resets the internal motor logic (active LOW):
+     - step table
+     - home position
+     - disables H-bridges
+ --------------------------------------------------------------------- */
+void resetMotorLogic(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, 0x12);
+
+  regval &= ~(1<<PORTEXP_MOTOR_RESET);
+  writePortExpanderRegister(addr, 0x12, regval);
+  regval |= (1<<PORTEXP_MOTOR_RESET);
+  writePortExpanderRegister(addr, 0x12, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     send motor to bed (active LOW)
+ --------------------------------------------------------------------- */
+void setMotorSleep(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, 0x12);
+
+  regval &= ~(1<<PORTEXP_MOTOR_SLEEP);
+
+  writePortExpanderRegister(addr, 0x12, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     get motor out of bed
+ --------------------------------------------------------------------- */
+void wakeMotorUp(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, 0x12);
+
+  regval |= (1<<PORTEXP_MOTOR_SLEEP);
+
+  writePortExpanderRegister(addr, 0x12, regval);
+  _delay_ms(2);
+
+  return;
+}
+
 
 /* =====================================================================
     DAC subsystem
