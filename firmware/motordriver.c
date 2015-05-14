@@ -46,7 +46,7 @@
  --------------------------------------------------------------------- */
 #define FW_VERSION (" 1.4")
 
-#define IDN_STRING_LENGTH 20
+#define IDN_STRING_LENGTH 50
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
 #define NUMBER_OF_PARAMETERS 10         /* amount of parameters to be kept */
 #define PARAMETER_LENGTH 20
@@ -73,7 +73,7 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR3
+#define MAX_MOTOR           MOTOR2
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -88,7 +88,8 @@
 #define BUTTON_MOTOR2       5
 #define BUTTON_MOTOR3       4
 #define BUTTON_MENUESCAPE   3
-#define BUTTON_ROT_ENC      0
+#define BUTTON_ROT_ENC      3
+#define BUTTON_ROT_ENC_PRESS 8
 
 /* LED definitions for buttons */
 #define BUTT_LED_CHANNELS 48
@@ -121,10 +122,12 @@
 
 
 /* ---------------------------------------------------------------------
-    IIC address stuff
+    IIC address and config stuff
  --------------------------------------------------------------------- */
 #define SCL_FREQ 400000
 #define TWBR_VALUE (((F_CPU/SCL_FREQ) - 16)/2)
+
+#define IIC_BUTTON_PORTEXP_ADDR     0x40
 
 #define IIC_MOTOR0_PORTEXP_ADDR     0x42
 #define IIC_MOTOR0_DAC_ADDR         0x12
@@ -143,7 +146,47 @@
 #define R_SENS 0.2
 
 /* ---------------------------------------------------------------------
-    bit assignment
+    MCP23017 registers
+ --------------------------------------------------------------------- */
+#define IODIRA      0x00
+#define IODIRB      0x01
+#define IPOLA       0x02
+#define IPOLB       0x03
+#define GPINTENA    0x04
+#define GPINTENB    0x05
+#define DEFVALA     0x06
+#define DEFVALB     0x07
+#define INTCONA     0x08
+#define INTCONB     0x09
+#define IOCONA      0x0A
+#define GPPUA       0x0C
+#define GPPUB       0x0D
+#define INTFA       0x0E
+#define INTFB       0x0F
+#define INTCAPA     0x10
+#define INTCAPB     0x11
+#define GPIOA       0x12
+#define GPIOB       0x13
+#define OLATA       0x14
+#define OLATB       0x15
+
+/* ---------------------------------------------------------------------
+    MCP23008 registers
+ --------------------------------------------------------------------- */
+#define IODIR       0x00
+#define IPOL        0x01
+#define GPINTEN     0x02
+#define DEFVAL      0x03
+#define INTCON      0x04
+#define IOCON       0x05
+#define GPPU        0x06
+#define INTF        0x07
+#define INTCAP      0x08
+#define GPIO        0x09
+#define OLAT        0x0A
+
+/* ---------------------------------------------------------------------
+    bit assignment for DRV8825 <--> MCP23017
  --------------------------------------------------------------------- */
 #define PORTEXP_MOTOR_ENABLE        3
 #define PORTEXP_MOTOR_DECAY         4
@@ -242,7 +285,9 @@ typedef struct{
 #define PHASE_B  (PINC & 1<<PC4)
 #define DYNAMICS 40
 
-const int16_t table[16] PROGMEM = {0,0,-1,0,0,0,0,1,1,0,0,0,0,-1,0,0};
+
+const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
+//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
 //const int16_t table[16] PROGMEM = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};
 
 typedef struct{
@@ -250,6 +295,8 @@ typedef struct{
   int8_t direction;
   int8_t steps;
   uint8_t readyToProcess;
+  uint8_t buttonPressed;
+  uint8_t buttonDebounce;
 
 }rotaryEncoder;
 
@@ -405,7 +452,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "Motor Driver\n \0"               )
+ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC2422\0")
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
 ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
@@ -645,6 +692,8 @@ void initDataStructs(void){
   rotEnc.direction = NO_MOVE;
   rotEnc.steps = 0;
   rotEnc.readyToProcess = 0;
+  rotEnc.buttonPressed = 0;
+  rotEnc.buttonDebounce = 0;
 
   IIC.operationInProgress = 0;
 
@@ -1757,10 +1806,10 @@ void updateMenu(void){
     menu.newDisplayedMenu = (uint8_t)menuPrompt;
 
     /* or enter the MENU_CHANGE_MODE */
-    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor == 0){
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor == 0){
       menu.newMenuMode = MENU_CHANGE_MODE;
     }
-    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor != 0){
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor != 0){
       menu.newMenuMode = MENU_VALUE_CHANGE;
     }
   }
@@ -1792,7 +1841,7 @@ void updateMenu(void){
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
-      case BUTTON_ROT_ENC:
+      case BUTTON_ROT_ENC_PRESS:
         menu.fastMovingMode ^= 1;
         break;
 
@@ -2011,6 +2060,7 @@ void updateMenu(void){
 
   buttonState.readyToProcess = 0;
   rotEnc.readyToProcess = 0;
+  rotEnc.buttonPressed = 0;
 
   return;
 }
@@ -2252,22 +2302,14 @@ void initPortExpander(uint8_t addr){
 
   ATOMIC_BLOCK(ATOMIC_FORCEON){
     /*  register addr  |  register value   |       send it        */
-    IIC.data[0] = 0x0A; IIC.data[1] = 0x20; IICwrite(addr, IIC.data, 2);  /* IOCON */
+    IIC.data[0] = IOCONA; IIC.data[1] = 0x20; IICwrite(addr, IIC.data, 2);
 
-    IIC.data[0] = 0x00; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* IODIRA */
-    IIC.data[0] = 0x01; IIC.data[1] = 0xFF; IICwrite(addr, IIC.data, 2);  /* IODIRB */
-    IIC.data[0] = 0x02; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* IPOLA */
-    IIC.data[0] = 0x03; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* IPOLB */
-    IIC.data[0] = 0x04; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPINTENA */
-    IIC.data[0] = 0x05; IIC.data[1] = 0x1D; IICwrite(addr, IIC.data, 2);  /* GPINTENB */
-    IIC.data[0] = 0x06; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* DEFVALA */
-    IIC.data[0] = 0x07; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);  /* DEFVALB */
-    IIC.data[0] = 0x08; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* INTCONA */
-    IIC.data[0] = 0x09; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);  /* INTCONB */
-    IIC.data[0] = 0x0C; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPPUA */
-    IIC.data[0] = 0x0D; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPPUB */
-    IIC.data[0] = 0x12; IIC.data[1] = 0x78; IICwrite(addr, IIC.data, 2);  /* GPIOA */
-    IIC.data[0] = 0x13; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);  /* GPIOB */
+    IIC.data[0] = IODIRA; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = IODIRB; IIC.data[1] = 0xFF; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = GPINTENB; IIC.data[1] = 0x1D; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = DEFVALB; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = INTCONB; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = GPIOA; IIC.data[1] = 0x78; IICwrite(addr, IIC.data, 2);
   }
 
   return;
@@ -2279,11 +2321,8 @@ void initPortExpander(uint8_t addr){
 void writePortExpanderRegister(uint8_t addr, uint8_t reg, uint8_t val){
 
   ATOMIC_BLOCK(ATOMIC_FORCEON){
-    IICstart();
-    IICsendByte(addr | TW_WRITE);
-    IICsendByte(reg);
-    IICsendByte(val);
-    IICstop();
+    IIC.data[0] = reg; IIC.data[1] = val;
+    IICwrite(addr, IIC.data, 2);
   }
 
   return;
@@ -2298,11 +2337,35 @@ uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg){
 
   ATOMIC_BLOCK(ATOMIC_FORCEON){
     IICstart();
+    if(IICgetStatus() != TW_START){
+      /* error handling */
+    }
+
     IICsendByte(addr | TW_WRITE);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
     IICsendByte(reg);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
     IICstart();
+    if(IICgetStatus() != TW_START){
+      /* error handling */
+    }
+
     IICsendByte(addr | TW_READ);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
     val = IICreadNACK();
+    if(IICgetStatus() !=  TW_MR_DATA_NACK){
+      /* error handling */
+    }
+
     IICstop();
   }
 
@@ -2335,12 +2398,12 @@ void setSubSteps(uint8_t mot, uint8_t steps){
   }
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   regval &= 0xF8;
 
   regval |= (reverseBitOrder(steps) & 0xE0) >> 5;
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
 
   motor[mot].subSteps = (1<<steps);
 
@@ -2368,7 +2431,7 @@ void setMotorState(uint8_t mot, uint8_t state){
   uint8_t regval = 0;
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   if(state){
     regval &= ~(1<<PORTEXP_MOTOR_ENABLE);
@@ -2377,7 +2440,7 @@ void setMotorState(uint8_t mot, uint8_t state){
     regval |= (1<<PORTEXP_MOTOR_ENABLE);
   }
 
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
   motor[mot].isTurnedOn = state;
 
   return;
@@ -2392,7 +2455,7 @@ void setMotorDecay(uint8_t mot, uint8_t state){
   uint8_t regval = 0;
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   if(state){
     regval &= ~(1<<PORTEXP_MOTOR_DECAY);
@@ -2401,7 +2464,7 @@ void setMotorDecay(uint8_t mot, uint8_t state){
     regval |= (1<<PORTEXP_MOTOR_DECAY);
   }
 
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
 
   return;
 }
@@ -2418,12 +2481,12 @@ void resetMotorLogic(uint8_t mot){
   uint8_t regval = 0;
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   regval &= ~(1<<PORTEXP_MOTOR_RESET);
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
   regval |= (1<<PORTEXP_MOTOR_RESET);
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
 
   return;
 }
@@ -2437,11 +2500,11 @@ void setMotorSleep(uint8_t mot){
   uint8_t regval = 0;
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   regval &= ~(1<<PORTEXP_MOTOR_SLEEP);
 
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
 
   return;
 }
@@ -2455,11 +2518,11 @@ void wakeMotorUp(uint8_t mot){
   uint8_t regval = 0;
 
   addr = getPortExpanderAddress(mot);
-  regval = readPortExpanderRegister(addr, 0x12);
+  regval = readPortExpanderRegister(addr, GPIOA);
 
   regval |= (1<<PORTEXP_MOTOR_SLEEP);
 
-  writePortExpanderRegister(addr, 0x12, regval);
+  writePortExpanderRegister(addr, GPIOA, regval);
   _delay_ms(2);
 
   return;
@@ -2509,12 +2572,9 @@ void setMotorCurrent(uint8_t mot, float curr){
 
   val = (uint8_t)floor(77.2 * curr);
 
-  IICread(addr, IIC.data, 2);
-  reg = IIC.data[0] << 8 | IIC.data[1];
-  reg &= 0x3000;
-  reg |= val << 4;
-  IIC.data[0] = (uint8_t)((reg & 0xFF00) >> 8);
-  IIC.data[1] = (uint8_t)(reg & 0x00FF);
+  IIC.data[0] = (val & 0xF0) >> 4;
+  IIC.data[1] = (val & 0x0F) << 4;
+
   IICwrite(addr, IIC.data, 2);
 
   return;
@@ -2554,16 +2614,32 @@ float getMotorCurrent(uint8_t mot){
  --------------------------------------------------------------------- */
 void initManualOperatingButtons(void){
 
-  DDRC = 0x38;    /* configure user interface port as input */
-  PORTC = 0x38;   /* set all internal pull-ups */
+  /* only for rotary encoder + its button */
+  PORTC |= (1<<PC5)|(1<<PC4)|(1<<PC3);   /* set internal pull-ups */
+
+  /* init port expander for buttons
+   *
+   * http://www.gammon.com.au/forum/?id=10945
+   *
+   */
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON, 0x22);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+
+  /* activate interrupt on INT0 (PD2) */
+  EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
+  EIMSK |= (1<<INT0);   /* enable interrupt pin INT0 */
 
   /* set up a timer for button/rotary_encoder polling
    *
    * the 8-bit Timer/Counter0 is used for that
    */
-
   TCCR0A |= (1<<WGM01);   /* enable CTC */
-  OCR0A   = 80;           /* 80 is an empirical value for best behavior of the rotEnc. */
+  OCR0A   = 40;           /* 40 is an empirical value for best behavior of the rotEnc. */
   TIMSK0 |= (1<<OCIE0A);  /* enable interrupt */
   TCNT0   = 0;
 
@@ -2583,7 +2659,7 @@ uint8_t getButtonEvent(void){
 
   if(buttonState.readyToProcess){
     /* a button has been pressed */
-    state = buttonState.inputRegister^0xFF;   /* invert state register */
+    state = buttonState.inputRegister/*^0xFF*/;   /* invert state register TODO: ??? */
 
     if(state & (1<<BUTTON_MOTOR0)){
       button = BUTTON_MOTOR0;
@@ -2600,8 +2676,8 @@ uint8_t getButtonEvent(void){
     else if(state & (1<<BUTTON_MENUESCAPE)){
       button = BUTTON_MENUESCAPE;
     }
-    else if(state & (1<<BUTTON_ROT_ENC)){
-      button = BUTTON_ROT_ENC;
+    else if(rotEnc.buttonPressed){
+      button = BUTTON_ROT_ENC_PRESS;
     }
     else{
       button = NO_BUTTON;
@@ -3320,17 +3396,14 @@ void commandDebugReadout(){
  --------------------------------------------------------------------- */
 void commandLED(char* param0, char* param1){
 
-  uint8_t a;
-  float b,c;
+  uint8_t a, b, c;
 
-  a = (uint8_t)strtol(param0, (char **)NULL, 10);
-  b = atof(param1);
+  a = (uint8_t)strtol(param0, (char **)NULL, 16);
+  b = (uint8_t)strtol(param1, (char **)NULL, 16);
 
-  setMotorCurrent(a,b);
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
 
-  c = getMotorCurrent(a);
-
-  sprintf(txString.buffer, "%f", c);
+  sprintf(txString.buffer, "\n%X\n%X", PINC, c);
   sendText(txString.buffer);
 
 }
@@ -3383,52 +3456,36 @@ ISR(USART0_RX_vect){
 ISR(TIMER0_COMPA_vect){
 
   uint8_t inputReg = 0;
+  static int16_t last = 0;  /* save old rotEnc value */
 
-  static int16_t last = 0;  /* save old rot enc value */
+  inputReg = PINC;  /* rotEnc is connected to PORTC */
 
-  inputReg = PINC;  /* all buttons are connected to PORTB */
-
-  /* first verify, that PINC differs from ALL_BUTTONS
-   * exclude the rotary encoder but include the rotary encoder press-function
-   */
-
-  /* check if a button is actually in process */
-  if(buttonState.readyToProcess){
-    return;
-  }
-  else{
-    /* debouncing the buttons */
-    if(buttonState.inDebouncingMode == 0){
-      if(buttonState.inputRegister != inputReg){
-        buttonState.inputRegister = inputReg;
-        buttonState.inDebouncingMode = 1;
-      }
-      else{
-        /* button is still pressed */
-        goto ROTARY_ENCODER;
-      }
+  /* handle rotEnc's button */
+  if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
+    /* button was pressed */
+    sendText("reb pressed");
+    if(rotEnc.buttonDebounce == 0){
+      /* enter debouncing mode */
+      rotEnc.buttonDebounce = 1;
     }
     else{
-      if(buttonState.inputRegister == inputReg){
-        /* debouncing completed, no register change --> button recognized */
+      /* we are already in debouncing mode */
+      if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
+        /* button is still pressed -> generate event */
+        rotEnc.buttonPressed = 1;
+        sendText("reb pressed");
+        rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
-      else{
-        /* debouncing failed, start again */
-        buttonState.inputRegister = 0;
-      }
-
-      buttonState.inDebouncingMode = 0;
     }
   }
 
-  /* now care about the rotary encoder (only rotations)
+
+  /* now care about the rotary encoder rotations
    *
    * code from:
    * http://www.mikrocontroller.net/articles/Drehgeber
    */
-
-ROTARY_ENCODER:
   last = (last << 2) & 0x0F;
   if(PHASE_A){
     last |= 2;
@@ -3439,6 +3496,27 @@ ROTARY_ENCODER:
   if(pgm_read_byte(&table[last])){
     rotEnc.steps += pgm_read_byte(&table[last]);
     rotEnc.readyToProcess = 1;
+  }
+}
+
+/* ---------------------------------------------------------------------
+    a button seems to be pressed ;-)
+ --------------------------------------------------------------------- */
+ISR(INT0_vect){
+
+  uint8_t regVal = 0;
+
+  regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
+
+  sendText("INT0");
+
+  /* check if a button is actually in process */
+  if(buttonState.readyToProcess){
+    return;
+  }
+  else{
+    buttonState.inputRegister = regVal;
+    buttonState.readyToProcess = 1;
   }
 }
 
@@ -3602,7 +3680,7 @@ int main(void){
   for(i = 0; i < BUTT_LED_CHANNELS; i++){
     buttLedData[i] = 255;
   }
-  DDRC  |= (1<<WS2803_CKI)|(1<<WS2803_SDI);
+  DDRC |= (1<<WS2803_CKI)|(1<<WS2803_SDI);
 
   /* initialize PORTA as output for motor Step/Direction */
   DDRA  = 0xFF;
@@ -3614,22 +3692,23 @@ int main(void){
 RESET:
   initDataStructs();  /* must be the first function after reset! */
   initBuffers();
-  initADC();
+  //initADC();
+  initIIC();
   initMotorDelayTimer();
   initManualOperatingButtons();
   initUSART();
-  initIIC();
 
-  /* TODO: detect motors */
+  /* TODO: detect motors if connected */
+
+  loadConfigFromEEPROM();
 
   /* turn on all available motors */
   for(i = 0; i <= MAX_MOTOR; i++){
-    //initPortExpander(i);
+    initPortExpander(getPortExpanderAddress(i));
     //initDAC(i);
     //setMotorState(i, ON);
+    //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
-
-  loadConfigFromEEPROM();
 
   updateDisplay();
 
