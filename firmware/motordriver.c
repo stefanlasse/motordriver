@@ -39,7 +39,8 @@
 #include <stdint.h>
 #include <math.h>
 
-#include "lcd-routines.h"
+//#include "lcd-routines.h"
+#include "characterOLED.h"
 
 /* ---------------------------------------------------------------------
     some global definitions
@@ -1103,6 +1104,9 @@ void loadConfigFromEEPROM(void){
   return;
 }
 
+
+
+
 /* =====================================================================
     Display subsystem
 
@@ -1114,6 +1118,410 @@ void loadConfigFromEEPROM(void){
   - 5x7 dots per character
   - driven in 4-bit-mode
 ====================================================================== */
+
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDinit(uint8_t ver)
+{
+  _oled_ver = ver;
+  if(_oled_ver != OLED_V1 && _oled_ver != OLED_V2) {
+    _oled_ver = OLED_V2; // if error, default to newer version
+  }
+
+
+  _data_pins[0] = data4;
+  _data_pins[1] = data5;
+  _data_pins[2] = data6;
+  _data_pins[3] = data7;
+
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  _displayfunction = LCD_FUNCTIONSET | LCD_4BITMODE;
+
+  OLEDbegin(16, 2);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDpinMode(uint8_t pin, uint8_t mode) {
+  if (mode) {
+    LCD_DDR |= (1 << pin);
+  } //output
+  else {
+    LCD_DDR &= ~(1 << pin);
+  } //input
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDdigitalWrite(uint8_t pin,uint8_t value) {
+  if (value == LOW) {
+    LCD_PORT &= ~(1 << pin);
+  } //If low, write 0
+  else {
+    LCD_PORT |= (1 << pin);
+  } //if high, write 1
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+uint8_t OLEDdigitalRead(uint8_t pin) {
+  return (LCD_PIN & (1 << pin));
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDbegin(uint8_t cols, uint8_t lines)
+{
+  _numlines = lines;
+  _currline = 0;
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_enable_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  _delay_us(50000); // give it some time to power up
+
+  // Now we pull both RS and R/W low to begin commands
+
+  for (int i = 0; i < 4; i++) {
+  OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], LOW);
+  }
+
+  // Initialization sequence is not quite as documented by Winstar.
+  // Documented sequence only works on initial power-up.
+  // An additional step of putting back into 8-bit mode first is
+  // required to handle a warm-restart.
+  //
+  // In the data sheet, the timing specs are all zeros(!).  These have been tested to
+  // reliably handle both warm & cold starts.
+
+  // 4-Bit initialization sequence from Technobly
+  OLEDwrite4bits(0x03); // Put back into 8-bit mode
+  _delay_us(5000);
+  if(_oled_ver == OLED_V2) {  // only run extra command for newer displays
+  OLEDwrite4bits(0x08);
+    _delay_us(5000);
+  }
+  OLEDwrite4bits(0x02); // Put into 4-bit mode
+  _delay_us(5000);
+  OLEDwrite4bits(0x02);
+  _delay_us(5000);
+  OLEDwrite4bits(0x08);
+  _delay_us(5000);
+
+  OLEDcommand(0x08);  // Turn Off
+  _delay_us(5000);
+  OLEDcommand(0x01);  // Clear Display
+  _delay_us(5000);
+  OLEDcommand(0x06);  // Set Entry Mode
+  _delay_us(5000);
+  OLEDcommand(0x02);  // Home Cursor
+  _delay_us(5000);
+  OLEDcommand(0x0C);  // Turn On - enable cursor & blink
+  _delay_us(5000);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+/********** high level commands, for the user! */
+void OLEDclear()
+{
+  OLEDcommand(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDhome()
+{
+  OLEDcommand(LCD_RETURNHOME);  // set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDsetCursor(uint8_t col, uint8_t row)
+{
+  uint8_t row_offsets[] = { 0x00, 0x40, 0x14, 0x54 };
+  if ( row >= _numlines )
+  {
+    row = 0;  //write to first line if out off bounds
+  }
+
+  OLEDcommand(LCD_SETDDRAMADDR | (col + row_offsets[row]));
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// Turn the display on/off (quickly)
+void OLEDnoDisplay()
+{
+  _displaycontrol &= ~LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDdisplay()
+{
+  _displaycontrol |= LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// Turns the underline cursor on/off
+void OLEDnoCursor()
+{
+  _displaycontrol &= ~LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDcursor()
+{
+  _displaycontrol |= LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// Turn on and off the blinking cursor
+void OLEDnoBlink()
+{
+  _displaycontrol &= ~LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDblink()
+{
+  _displaycontrol |= LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// These commands scroll the display without changing the RAM
+void OLEDscrollDisplayLeft(void)
+{
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDscrollDisplayRight(void)
+{
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// This is for text that flows Left to Right
+void OLEDleftToRight(void)
+{
+  _displaymode |= LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// This is for text that flows Right to Left
+void OLEDrightToLeft(void)
+{
+  _displaymode &= ~LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// This will 'right justify' text from the cursor
+void OLEDautoscroll(void)
+{
+  _displaymode |= LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// This will 'left justify' text from the cursor
+void OLEDnoAutoscroll(void)
+{
+  _displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// Allows us to fill the first 8 CGRAM locations
+// with custom characters
+void OLEDcreateChar(uint8_t location, uint8_t charmap[])
+{
+  location &= 0x7; // we only have 8 locations 0-7
+  OLEDcommand(LCD_SETCGRAMADDR | (location << 3));
+  for (int i=0; i<8; i++)
+  {
+  OLEDwriteC(charmap[i]);
+  }
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+/*********** mid level commands, for sending data/cmds */
+inline void OLEDcommand(uint8_t value)
+{
+  OLEDsend(value, LOW);
+  OLEDwaitForReady();
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+inline size_t OLEDwriteC(uint8_t value)
+{
+  OLEDsend(value, HIGH);
+  OLEDwaitForReady();
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+/************ low level data pushing commands **********/
+// write either command or data
+void OLEDsend(uint8_t value, uint8_t mode)
+{
+  OLEDdigitalWrite(rs_pin, mode);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  OLEDwrite4bits(value>>4);
+  OLEDwrite4bits(value);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDpulseEnable(void)
+{
+  OLEDdigitalWrite(_enable_pin, HIGH);
+  _delay_us(50);    // Timing Spec?
+  OLEDdigitalWrite(_enable_pin, LOW);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+void OLEDwrite4bits(uint8_t value)
+{
+  for (int i = 0; i < 4; i++)
+  {
+    OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], (value >> i) & 0x01);
+  }
+  _delay_us(50); // Timing spec?
+  OLEDpulseEnable();
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+// Poll the busy bit until it goes LOW
+void OLEDwaitForReady(void)
+{
+  unsigned char busy = 1;
+  OLEDpinMode(_busy_pin, INPUT);
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, HIGH);
+  do
+  {
+  OLEDdigitalWrite(_enable_pin, LOW);
+    OLEDdigitalWrite(_enable_pin, HIGH);
+
+    _delay_us(10);
+    busy = OLEDdigitalRead(_busy_pin);
+    OLEDdigitalWrite(_enable_pin, LOW);
+
+    OLEDpulseEnable();    // get remaining 4 bits, which are not used.
+  }
+  while(busy);
+
+  OLEDpinMode(_busy_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+size_t OLEDprintCC(const char str[])
+{
+  return OLEDwriteCC(str);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+size_t OLEDprintC(char c)
+{
+  return OLEDwriteC(c);
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCCC(const uint8_t *buffer, size_t size)
+{
+  size_t n = 0;
+  while (size--) {
+    n += OLEDwriteC(*buffer++);
+  }
+  return n;
+}
+
+/* ---------------------------------------------------------------------
+    load last stored motor configuration from EEPROM
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCC(const char *str) {
+  if (str == NULL) return 0;
+  return OLEDwriteCCC((const uint8_t *)str, strlen(str));
+}
+
+
+
+#if 0
 
 /* Interface to a HD44780 compatible LCD in 4-Bit-mode
  * http://www.mikrocontroller.net/articles/HD44780
@@ -1316,6 +1724,9 @@ void lcd_generatechar(uint8_t code, const uint8_t *data){
   return;
 }
 
+
+#endif
+
 /* ---------------------------------------------------------------------
    change button LED color/intensity
  --------------------------------------------------------------------- */
@@ -1510,11 +1921,15 @@ void updateDisplay(void){
     case MENU_SCROLL_MODE:
       if(menu.currentDisplayedMenu != menu.newDisplayedMenu){
         changeDisplayMenu(menu.newDisplayedMenu);
-        lcd_setcursor(0, 1);  /* line 1 */
-        lcd_string(menu.newMenuText[0]);
+        //lcd_setcursor(0, 1);  /* line 1 */
+        //lcd_string(menu.newMenuText[0]);
+        OLEDsetCursor(0, 0);
+        OLEDprintCC(menu.newMenuText[0]);
         strcpy(menu.currentMenuText[0], menu.newMenuText[0]);
-        lcd_setcursor(0, 2);  /* line 2 */
-        lcd_string(menu.newMenuText[1]);
+        //lcd_setcursor(0, 2);  /* line 2 */
+        //lcd_string(menu.newMenuText[1]);
+        OLEDsetCursor(0, 1);
+        OLEDprintCC(menu.newMenuText[1]);
         strcpy(menu.currentMenuText[1], menu.newMenuText[1]);
         menu.currentDisplayedMenu = menu.newDisplayedMenu;
         for(j = 0; j <= NUMBER_DISPLAY_VALUE_STRINGS; j++){
@@ -1527,23 +1942,31 @@ void updateDisplay(void){
     case MENU_VALUE_CHANGE:
       updateDisplayChangeValues(menu.currentDisplayedMenu);
       if(strcmp(menu.currentDisplayValue[0], menu.newDisplayValue[0])){
-        lcd_setcursor(0, 1);
-        lcd_string(menu.newDisplayValue[0]);
+        //lcd_setcursor(0, 1);
+        //lcd_string(menu.newDisplayValue[0]);
+        OLEDsetCursor(0, 0);
+        OLEDprintCC(menu.newDisplayValue[0]);
         strcpy(menu.currentDisplayValue[0], menu.newDisplayValue[0]);
       }
       if(strcmp(menu.currentDisplayValue[1], menu.newDisplayValue[1])){
-        lcd_setcursor(8, 1);
-        lcd_string(menu.newDisplayValue[1]);
+        //lcd_setcursor(8, 1);
+        //lcd_string(menu.newDisplayValue[1]);
+        OLEDsetCursor(8, 0);
+        OLEDprintCC(menu.newDisplayValue[1]);
         strcpy(menu.currentDisplayValue[1], menu.newDisplayValue[1]);
       }
       if(strcmp(menu.currentDisplayValue[2], menu.newDisplayValue[2])){
-        lcd_setcursor(0, 2);
-        lcd_string(menu.newDisplayValue[2]);
+        //lcd_setcursor(0, 2);
+        //lcd_string(menu.newDisplayValue[2]);
+        OLEDsetCursor(0, 1);
+        OLEDprintCC(menu.newDisplayValue[2]);
         strcpy(menu.currentDisplayValue[2], menu.newDisplayValue[2]);
       }
       if(strcmp(menu.currentDisplayValue[3], menu.newDisplayValue[3])){
-        lcd_setcursor(8, 2);
-        lcd_string(menu.newDisplayValue[3]);
+        //lcd_setcursor(8, 2);
+        //lcd_string(menu.newDisplayValue[3]);
+        OLEDsetCursor(8, 1);
+        OLEDprintCC(menu.newDisplayValue[3]);
         strcpy(menu.currentDisplayValue[3], menu.newDisplayValue[3]);
       }
       break;
@@ -1972,14 +2395,18 @@ void updateMenu(void){
 
         case MENU_SAVE_CONFIG:   /* save current configuration */
           saveConfigToEEPROM();
-          lcd_clear();
-          lcd_string("saved");
+          //lcd_clear();
+          //lcd_string("saved");
+          OLEDclear();
+          OLEDprintCC("saved");
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
-          lcd_clear();
-          lcd_string("loaded");
+          //lcd_clear();
+          //lcd_string("loaded");
+          OLEDclear();
+          OLEDprintCC("loaded");
           break;
 
         case MENU_OPTICAL_ZERO_POS: /* define the optical zero position */
@@ -3686,8 +4113,16 @@ int main(void){
   DDRA  = 0xFF;
   PORTA = 0;
 
-  lcd_init();
-  lcd_home();
+  //lcd_init();
+  //lcd_home();
+
+  /* OLED setup */
+  OLEDinit(OLED_V2);
+  _delay_ms(2000);
+  OLEDbegin(16, 2);
+  OLEDprintCC("LK-Instruments");
+  OLEDclear();
+  OLEDsetCursor(0, 0);
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
