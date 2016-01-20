@@ -79,9 +79,9 @@
 
 /* LED definitions for buttons */
 #define BUTT_LED_CHANNELS 48
-#define RED     0
+#define RED     2
 #define GREEN   1
-#define BLUE    2
+#define BLUE    0
 
 #define WS2803_CKI  PC7
 #define WS2803_SDI  PC6
@@ -621,7 +621,7 @@ void commandGetMotorState(char* param0);
 void commandDebugReadout(void);
 
 
-//uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg);
+uint8_t reverseBitOrder(uint8_t b);
 
 
 /* =====================================================================
@@ -1707,10 +1707,17 @@ void lcd_generatechar(uint8_t code, const uint8_t *data){
    change button LED color/intensity
  --------------------------------------------------------------------- */
 void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
-
+  
   uint8_t chan = 0;
-
-  chan = 6*butt+color;
+  
+  switch(butt) {
+	case 0: chan = 6*2+color; break;
+	case 1: chan = 6*1+color; break;
+	case 2: chan = 6*0+color; break;
+	case 3: chan = 6*5+color; break;
+	case 4: chan = 6*4+color; break;
+	default: chan = 0; break;
+  }
 
   buttLedData[chan]   = intensity;
   buttLedData[chan+3] = intensity;
@@ -1722,54 +1729,37 @@ void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
    update LEDs
  --------------------------------------------------------------------- */
 void updateLEDs(void){
-
+  
   uint16_t i = 0;
   uint8_t  j = 0;
   uint8_t data = 0;
+  uint8_t outbyte = 0;
 
-  PORTC |= (1<<WS2803_CKI);
-  _delay_us(50);
-  PORTC &= ~(1<<WS2803_CKI);
-  _delay_us(450);
+  for(i = BUTT_LED_CHANNELS - 1; i < 255; i--){
+	data = buttLedData[i];
+	for(uint8_t i=7; i<255; i--)
+    {
+        outbyte = (data>>i) & 0x01;
+        // Set the data pin to given value, and clk pin to 0
+        if(outbyte)
+        {
+            PORTC |= (outbyte << WS2803_SDI);
+        }
+        else
+        {
+            PORTC &= ~(outbyte << WS2803_SDI);
+        }
+        PORTC &= ~(1 << WS2803_CKI);
+        _delay_us(10);
 
-  PORTC |= (1<<WS2803_SDI);
-  _delay_us(10);
-  for(i=0;i<500;i++){
-    _delay_us(10);
-    PORTC |= (1<<WS2803_CKI);
-    _delay_us(10);
-    PORTC &= ~(1<<WS2803_CKI);
-  }
+        // Keep the data pin, and set clk pin to 1 (strobe)
+        PORTC |= 1 << WS2803_CKI;
+        _delay_us(10);
 
-#if 0
-  /* now do some bit flips */
-  /* prepare cycle */
-  PORTC &= ~(1<<WS2803_CKI);
-  PORTC &= ~(1<<WS2803_SDI);  /* start with DATA = zero */
-  _delay_us(550);
-
-  for(i = BUTT_LED_CHANNELS - 1; i >= 0; i--){
-    data = buttLedData[i];
-    for(j = 7; j >= 0; j--){
-      if(data & (1<<j)){
-        PORTC |= (1<<WS2803_SDI);
-      }
-      else{
-        PORTC &= ~(1<<WS2803_SDI);
-      }
-      /* do a clock cycle */
-      _delay_us(1);
-      PORTC |= (1<<WS2803_CKI);
-      _delay_us(1);
-      PORTC &= ~(1<<WS2803_CKI);
-      _delay_us(1);
+        // Zero both clk and data pins
+        PORTC &= ~((1 << WS2803_SDI) | (1 << WS2803_CKI));
     }
   }
-
-  /* pull CKI to logic 1 till next update */
-  PORTC |= (1<<WS2803_CKI);
-
-#endif
 
   return;
 }
@@ -3801,64 +3791,20 @@ void commandDebugReadout(){
 /* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
-void commandLED(char* param0, char* param1){
-/*
+void commandLED(char* param0, char* param1, char* param2){
+
   uint8_t a, b, c;
 
   a = (uint8_t)strtol(param0, (char **)NULL, 16);
   b = (uint8_t)strtol(param1, (char **)NULL, 16);
+  c = (uint8_t)strtol(param2, (char **)NULL, 16);
 
-  //b = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);
-  //sprintf(txString.buffer, "\n%X\n%X", b, c);
+  //sprintf(txString.buffer, "\n%X\n%X\n%X", a, b, c);
+  //sendText(txString.buffer);
 
-  sprintf(txString.buffer, "test %X", c);
-  sendText(txString.buffer);
+  changeButtonLED(a, b, c);
+  updateLEDs();
   
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR);  
-  sprintf(txString.buffer, "IODIR %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL);  
-  sprintf(txString.buffer, "IPOL %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN);  
-  sprintf(txString.buffer, "GPINTEN %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL);  
-  sprintf(txString.buffer, "DEFVAL %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON);  
-  sprintf(txString.buffer, "INTCON %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON);  
-  sprintf(txString.buffer, "IOCON %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU);  
-  sprintf(txString.buffer, "GPPU %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTF);  
-  sprintf(txString.buffer, "INTF %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);  
-  sprintf(txString.buffer, "INTCAP %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);  
-  sprintf(txString.buffer, "GPIO %X", c);
-  sendText(txString.buffer);
-  
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);  
-  sprintf(txString.buffer, "OLAT %X", c);
-  sendText(txString.buffer);
-*/
   return;
 }
 
@@ -4131,9 +4077,10 @@ int main(void){
 
   /* initialize data for LEDs and WS2803 output pins */
   for(i = 0; i < BUTT_LED_CHANNELS; i++){
-    buttLedData[i] = 255;
+    buttLedData[i] = 0;
   }
-  DDRC |= (1<<WS2803_CKI)|(1<<WS2803_SDI);
+  DDRC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
+  PORTC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
 
   /* initialize PORTA as output for motor Step/Direction */
   DDRA  = 0xFF;
@@ -4168,10 +4115,15 @@ RESET:
     //setMotorState(i, ON);
     //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
-  
-  //initButtonPortExpander();
 
   updateDisplay();
+  
+  //init LEDs with default color pattern
+  for(i = 0; i < 4; i++){
+    changeButtonLED(i, GREEN, 0x7F);
+  }
+  changeButtonLED(LED_MESC, RED, 0x7F);
+  updateLEDs();
 
   sei();  /* turn on interrupts */
 
@@ -4330,7 +4282,7 @@ RESET:
         break;
 
       case 0x9F:    /* LED */
-        commandLED(commandParam[1], commandParam[2]);
+        commandLED(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       default:
