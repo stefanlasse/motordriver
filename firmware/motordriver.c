@@ -272,8 +272,8 @@ typedef struct{
 #define DYNAMICS 40
 
 
-const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
-//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
+//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
+const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
 //const int16_t table[16] PROGMEM = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};
 
 typedef struct{
@@ -619,6 +619,9 @@ void  commandSetProgStep(char* param0, char* param1, char* param2,
                          char* param3, char* param4, char* param5);
 void commandGetMotorState(char* param0);
 void commandDebugReadout(void);
+
+
+//uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg);
 
 
 /* =====================================================================
@@ -2694,24 +2697,6 @@ uint8_t getDACAddress(uint8_t mot){
 
     http://ww1.microchip.com/downloads/en/DeviceDoc/21952b.pdf
 ====================================================================== */
-  
-/* ---------------------------------------------------------------------
-   initialize I2C port expander for buttons in byte mode
- --------------------------------------------------------------------- */
-void initButtonPortExpander(void){
-
-  ATOMIC_BLOCK(ATOMIC_FORCEON){
-    //  register addr  |  register value   |       send it
-    IIC.data[0] = IODIR; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-	IIC.data[0] = IPOL; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-    IIC.data[0] = GPINTEN; IIC.data[1] = 0xF8; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-    IIC.data[0] = DEFVAL; IIC.data[1] = 0x03; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-    IIC.data[0] = INTCON; IIC.data[1] = 0xF8; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-	IIC.data[0] = GPPU; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
-  }
-
-  return;
-}
 
 /* ---------------------------------------------------------------------
    initialize I2C port expanders in byte mode
@@ -3043,10 +3028,14 @@ void initManualOperatingButtons(void){
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON, 0x22);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xF8);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x03);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xF8);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+  
+  //read GPIO register to clear the interrupt
+  uint8_t tmp = 0;
+  tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
 
   /* activate interrupt on INT0 (PD2) */
   EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
@@ -3077,9 +3066,12 @@ uint8_t getButtonEvent(void){
 
   if(buttonState.readyToProcess){
     /* a button has been pressed */
-    state = buttonState.inputRegister/*^0xFF*/;   /* invert state register TODO: ??? */
-
-    if(state & (1<<BUTTON_MOTOR0)){
+    state = buttonState.inputRegister;
+	
+	if(rotEnc.buttonPressed){
+      button = BUTTON_ROT_ENC_PRESS;
+	}
+	else if(state & (1<<BUTTON_MOTOR0)){
       button = BUTTON_MOTOR0;
     }
     else if(state & (1<<BUTTON_MOTOR1)){
@@ -3093,9 +3085,6 @@ uint8_t getButtonEvent(void){
     }
     else if(state & (1<<BUTTON_MENUESCAPE)){
       button = BUTTON_MENUESCAPE;
-    }
-    else if(rotEnc.buttonPressed){
-      button = BUTTON_ROT_ENC_PRESS;
     }
     else{
       button = NO_BUTTON;
@@ -3813,7 +3802,7 @@ void commandDebugReadout(){
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
 void commandLED(char* param0, char* param1){
-
+/*
   uint8_t a, b, c;
 
   a = (uint8_t)strtol(param0, (char **)NULL, 16);
@@ -3821,7 +3810,7 @@ void commandLED(char* param0, char* param1){
 
   //b = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);
   //sprintf(txString.buffer, "\n%X\n%X", b, c);
-  
+
   sprintf(txString.buffer, "test %X", c);
   sendText(txString.buffer);
   
@@ -3869,7 +3858,7 @@ void commandLED(char* param0, char* param1){
   c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);  
   sprintf(txString.buffer, "OLAT %X", c);
   sendText(txString.buffer);
-
+*/
   return;
 }
 
@@ -3928,23 +3917,20 @@ ISR(TIMER0_COMPA_vect){
   /* handle rotEnc's button */
   if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
     /* button was pressed */
-    //sendText("reb pressed");
     if(rotEnc.buttonDebounce == 0){
-      /* enter debouncing mode */
-      rotEnc.buttonDebounce = 1;
+      // enter debouncing mode
+	  rotEnc.buttonDebounce = 1;
     }
-    else{
-      /* we are already in debouncing mode */
-      if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
-        /* button is still pressed -> generate event */
+  }
+  else{
+      /* button is no longer pressed ...*/
+      if(rotEnc.buttonDebounce == 1){
+        /* ... and we are already in debouncing mode -> generate event */
         rotEnc.buttonPressed = 1;
-        //sendText("reb pressed");
         rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
-    }
   }
-
 
   /* now care about the rotary encoder rotations
    *
@@ -3968,15 +3954,13 @@ ISR(TIMER0_COMPA_vect){
     a button seems to be pressed ;-)
  --------------------------------------------------------------------- */
 ISR(INT0_vect){
-
-  sendText("INT0");
- 
+   
+  //sendText("INT0");
+  _delay_us(100);	//without delay a button press causes reset!
+  
   uint8_t regVal = 0;
-
+  
   regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
-
-  //sprintf(txString.buffer, "INTCAP %X", regVal);
-  //sendText(txString.buffer);
   
   /* check if a button is actually in process */
   if(buttonState.readyToProcess){
@@ -3986,6 +3970,7 @@ ISR(INT0_vect){
     buttonState.inputRegister = regVal;
     buttonState.readyToProcess = 1;
   }
+
 }
 
 /* ---------------------------------------------------------------------
@@ -4184,7 +4169,7 @@ RESET:
     //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
   
-  initButtonPortExpander();
+  //initButtonPortExpander();
 
   updateDisplay();
 
