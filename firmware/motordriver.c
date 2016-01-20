@@ -1,27 +1,12 @@
 /* =====================================================================
 
-    Firmware for Motordriver
-
-    3. Physikalisches Institut, University of Stuttgart
+    Firmware for Motordriver / SMCx242
 
  ===================================================================== */
 
 /*
- *   Motordriver: 3. PI, Uni Stuttgart
- *   Copyright (C) 2014  Stefan Lasse
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *   Motordriver
+ *   Copyright (C) 2016 LK-Instruments
  */
 
 #define F_CPU 20000000UL /* in Hz */
@@ -45,7 +30,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION (" 1.4")
+#define FW_VERSION (" 1.5")
 
 #define IDN_STRING_LENGTH 50
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -74,7 +59,7 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR2
+#define MAX_MOTOR           MOTOR3
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -147,7 +132,7 @@
 #define R_SENS 0.2
 
 /* ---------------------------------------------------------------------
-    MCP23017 registers
+    MCP23017 registers (for IOCON.BANK = 0 which is default)
  --------------------------------------------------------------------- */
 #define IODIRA      0x00
 #define IODIRB      0x01
@@ -453,7 +438,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC2422\0")
+ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0")
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
 ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
@@ -2022,8 +2007,8 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   /* load the values of all 4 motors */
   switch(state){
     case MENU_MAIN:   /* main menu point, no values here to change */
-      sprintf(menu.newDisplayValue[0], "3.PI  Un");
-      sprintf(menu.newDisplayValue[1], "i Stutt.");
+      sprintf(menu.newDisplayValue[0], "SMCx242 ");
+      sprintf(menu.newDisplayValue[1], "        ");
       sprintf(menu.newDisplayValue[2], "Firmware");
       sprintf(menu.newDisplayValue[3], FW_VERSION);
       break;
@@ -2709,6 +2694,24 @@ uint8_t getDACAddress(uint8_t mot){
 
     http://ww1.microchip.com/downloads/en/DeviceDoc/21952b.pdf
 ====================================================================== */
+  
+/* ---------------------------------------------------------------------
+   initialize I2C port expander for buttons in byte mode
+ --------------------------------------------------------------------- */
+void initButtonPortExpander(void){
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    //  register addr  |  register value   |       send it
+    IIC.data[0] = IODIR; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+	IIC.data[0] = IPOL; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+    IIC.data[0] = GPINTEN; IIC.data[1] = 0xF8; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+    IIC.data[0] = DEFVAL; IIC.data[1] = 0x03; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+    IIC.data[0] = INTCON; IIC.data[1] = 0xF8; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+	IIC.data[0] = GPPU; IIC.data[1] = 0xFF; IICwrite(IIC_BUTTON_PORTEXP_ADDR, IIC.data, 2);
+  }
+
+  return;
+}
 
 /* ---------------------------------------------------------------------
    initialize I2C port expanders in byte mode
@@ -3108,7 +3111,7 @@ uint8_t getButtonEvent(void){
 int8_t getRotaryEncoderEvent(void){
 
   /*
-   * returns the turned steps of the rotary encoder since
+   * returns the turned steps of the rotary encoder
    * since last look-up here
    */
 
@@ -3816,11 +3819,58 @@ void commandLED(char* param0, char* param1){
   a = (uint8_t)strtol(param0, (char **)NULL, 16);
   b = (uint8_t)strtol(param1, (char **)NULL, 16);
 
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
-
-  sprintf(txString.buffer, "\n%X\n%X", PINC, c);
+  //b = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);
+  //sprintf(txString.buffer, "\n%X\n%X", b, c);
+  
+  sprintf(txString.buffer, "test %X", c);
+  sendText(txString.buffer);
+  
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR);  
+  sprintf(txString.buffer, "IODIR %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL);  
+  sprintf(txString.buffer, "IPOL %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN);  
+  sprintf(txString.buffer, "GPINTEN %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL);  
+  sprintf(txString.buffer, "DEFVAL %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON);  
+  sprintf(txString.buffer, "INTCON %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON);  
+  sprintf(txString.buffer, "IOCON %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU);  
+  sprintf(txString.buffer, "GPPU %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTF);  
+  sprintf(txString.buffer, "INTF %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);  
+  sprintf(txString.buffer, "INTCAP %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);  
+  sprintf(txString.buffer, "GPIO %X", c);
+  sendText(txString.buffer);
+  
+  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, OLAT);  
+  sprintf(txString.buffer, "OLAT %X", c);
   sendText(txString.buffer);
 
+  return;
 }
 
 /* =====================================================================
@@ -3878,7 +3928,7 @@ ISR(TIMER0_COMPA_vect){
   /* handle rotEnc's button */
   if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
     /* button was pressed */
-    sendText("reb pressed");
+    //sendText("reb pressed");
     if(rotEnc.buttonDebounce == 0){
       /* enter debouncing mode */
       rotEnc.buttonDebounce = 1;
@@ -3888,7 +3938,7 @@ ISR(TIMER0_COMPA_vect){
       if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
         /* button is still pressed -> generate event */
         rotEnc.buttonPressed = 1;
-        sendText("reb pressed");
+        //sendText("reb pressed");
         rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
@@ -3919,12 +3969,15 @@ ISR(TIMER0_COMPA_vect){
  --------------------------------------------------------------------- */
 ISR(INT0_vect){
 
+  sendText("INT0");
+ 
   uint8_t regVal = 0;
 
   regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
 
-  sendText("INT0");
-
+  //sprintf(txString.buffer, "INTCAP %X", regVal);
+  //sendText(txString.buffer);
+  
   /* check if a button is actually in process */
   if(buttonState.readyToProcess){
     return;
@@ -4130,6 +4183,8 @@ RESET:
     //setMotorState(i, ON);
     //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
+  
+  initButtonPortExpander();
 
   updateDisplay();
 
@@ -4289,7 +4344,7 @@ RESET:
         commandDebugReadout();
         break;
 
-      case 0x9F:
+      case 0x9F:    /* LED */
         commandLED(commandParam[1], commandParam[2]);
         break;
 
