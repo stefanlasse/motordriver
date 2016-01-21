@@ -59,7 +59,7 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR3
+#define MAX_MOTOR           MOTOR3  //set to MOTOR1 for 2 or MOTOR3 for 4 channel version
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -2172,6 +2172,7 @@ void updateMenu(void){
   menuItem *menuPtr;
 
   uint8_t i = 0;
+  uint8_t tmp = 0;
 
   /* first check if we have something to change at all */
   if(buttonState.readyToProcess == 0 && rotEnc.readyToProcess == 0){
@@ -2343,18 +2344,24 @@ void updateMenu(void){
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              if(rotEncVal > 0){
-                motor[i].subSteps *= 2.0;
+              tmp = motor[i].subSteps;
+			  if(rotEncVal > 0){
+                //motor[i].subSteps *= 2.0;
+				tmp *= 2.0;
               }
               if(rotEncVal < 0){
-                motor[i].subSteps /= 2.0;
+                //motor[i].subSteps /= 2.0;
+				tmp /= 2.0;
               }
               if(motor[i].subSteps < 1){
-                motor[i].subSteps = 1;
+                //motor[i].subSteps = 1;
+				tmp = 1;
               }
               if(motor[i].subSteps > 32){
-                motor[i].subSteps = 32;
+                //motor[i].subSteps = 32;
+				tmp = 32;
               }
+			  setSubSteps(i,tmp);
             }
           }
           break;
@@ -2780,16 +2787,36 @@ uint8_t reverseBitOrder(uint8_t b){
 
 /* ---------------------------------------------------------------------
    sets the desired motor substeps
+   function takes a value 1...32   
  --------------------------------------------------------------------- */
 void setSubSteps(uint8_t mot, uint8_t steps){
 
   uint8_t addr = 0;
   uint8_t regval = 0;
-
+  
+  /*
   if(steps > 5){
     steps = 5;
   }
-
+  */
+  
+  if(steps > 32){
+    steps = 32;
+  }
+  if(steps < 1){
+    steps = 1;
+  }
+  
+  //convert steps from 1...32 to 0...5
+  uint8_t tmp_steps = 0;
+  tmp_steps = steps;
+  steps = 0;
+  
+  while(tmp_steps != 1){
+    tmp_steps = tmp_steps >> 1;
+	steps++ ;
+  }
+  
   addr = getPortExpanderAddress(mot);
   regval = readPortExpanderRegister(addr, GPIOA);
 
@@ -2797,7 +2824,7 @@ void setSubSteps(uint8_t mot, uint8_t steps){
 
   regval |= (reverseBitOrder(steps) & 0xE0) >> 5;
   writePortExpanderRegister(addr, GPIOA, regval);
-
+  
   motor[mot].subSteps = (1<<steps);
 
   return;
@@ -3495,7 +3522,8 @@ void commandSetSubSteps(char* param0, char* param1){
   }
   else{
     val = (double)atof(param1);
-    motor[i].subSteps = val;
+    //motor[i].subSteps = val;
+	setSubSteps(i, (uint8_t)round(val));
   }
 
   return;
@@ -3798,12 +3826,12 @@ void commandLED(char* param0, char* param1, char* param2){
   a = (uint8_t)strtol(param0, (char **)NULL, 16);
   b = (uint8_t)strtol(param1, (char **)NULL, 16);
   c = (uint8_t)strtol(param2, (char **)NULL, 16);
+  
+  sprintf(txString.buffer, "\na=%d\nb=%d", a, b);
+  sendText(txString.buffer);
 
-  //sprintf(txString.buffer, "\n%X\n%X\n%X", a, b, c);
-  //sendText(txString.buffer);
-
-  changeButtonLED(a, b, c);
-  updateLEDs();
+  //changeButtonLED(a, b, c);
+  //updateLEDs();
   
   return;
 }
