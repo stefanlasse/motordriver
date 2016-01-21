@@ -236,7 +236,7 @@ typedef struct{
   uint8_t  isMovingInfinite;
   double   gearRatio;              /* initially set to 60:18 */
   double   stepsPerFullRotation;   /* initially set to 400 */
-  double   subSteps;               /* could be 1, 2, 4, 8, 16 */
+  double   subSteps;               /* could be 1, 2, 4, 8, 16, 32 */
   int8_t   stepUnit;               /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
@@ -383,7 +383,10 @@ ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manua
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
 ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
 
-#define TOTAL_NUMBER_OF_COMMANDS 32
+ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
+ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
+
+#define TOTAL_NUMBER_OF_COMMANDS 34
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -395,7 +398,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
-                                              &cmd_30_, &cmd_31_
+                                              &cmd_30_, &cmd_31_, &cmd_32_,
+											  &cmd_33_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -2978,7 +2982,7 @@ void setMotorCurrent(uint8_t mot, float curr){
   uint16_t reg = 0;
 
   if(curr < 0.0){
-    curr = -curr;
+    curr = 0.0;
   }
 
   if(curr > 2.5){ /* maximum for DRV8825: 2.5 Ampere */
@@ -2987,6 +2991,10 @@ void setMotorCurrent(uint8_t mot, float curr){
 
   addr = getDACAddress(mot);
 
+  //I = Vref / (5 * Rsense)
+  //with Rsense = 0.2 Ohm
+  // --> I = Vref
+  
   /* 255 / 3.3V * 2.5A = 193 */
   /* 193 <=> 2.5 A, 193/2.5 = 77.2 */
 
@@ -3796,6 +3804,53 @@ void commandGetMotorState(char* param0){
 }
 
 /* ---------------------------------------------------------------------
+    returns the adjusted motor current
+ --------------------------------------------------------------------- */
+char* commandGetMotorCurrent(char* param0){
+
+  uint8_t i = 0;
+  double curr = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+  }
+  else{
+    curr = getMotorCurrent(i);
+    sprintf(txString.buffer, "%f", curr);
+  }
+  
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the desired motor current
+ --------------------------------------------------------------------- */
+void commandSetMotorCurrent(char* param0, char* param1){
+  
+  uint8_t i = 0;
+  //float curr = 0.0f;
+  double curr = 0.0;
+  
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  curr = atof(param1);
+  
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+	sendText(txString.buffer);
+  }
+  else{
+    setMotorCurrent(i, curr);
+  }
+  
+  //sprintf(txString.buffer, "\nmot %d\ncurr=%f", i, curr);
+  //sendText(txString.buffer);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
 void commandDebugReadout(){
@@ -3821,13 +3876,21 @@ void commandDebugReadout(){
  --------------------------------------------------------------------- */
 void commandLED(char* param0, char* param1, char* param2){
 
-  uint8_t a, b, c;
+	// mot, curr, x
 
-  a = (uint8_t)strtol(param0, (char **)NULL, 16);
-  b = (uint8_t)strtol(param1, (char **)NULL, 16);
+  uint8_t a, c;
+  double b = 0.0f;
+  float curr = 0.0;
+
+  a = (uint8_t)strtol(param0, (char **)NULL, 10);
+  b = (uint8_t)strtol(param1, (char **)NULL, 10);
   c = (uint8_t)strtol(param2, (char **)NULL, 16);
   
-  sprintf(txString.buffer, "\na=%d\nb=%d", a, b);
+  initDAC(a);
+  setMotorCurrent(a, b);
+  curr = getMotorCurrent(a);
+  
+  sprintf(txString.buffer, "\na=%d\nb=%f\ncurr=%f", a, b, curr);
   sendText(txString.buffer);
 
   //changeButtonLED(a, b, c);
@@ -4137,11 +4200,13 @@ RESET:
   loadConfigFromEEPROM();
 
   /* turn on all available motors */
-  for(i = 0; i <= MAX_MOTOR; i++){
+  //for(i = 0; i <= MAX_MOTOR; i++){
+  for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
     initPortExpander(getPortExpanderAddress(i));
-    //initDAC(i);
-    //setMotorState(i, ON);
-    //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
+    initDAC(i);
+	setMotorCurrent(i, 1.3);  //this is a default value for testing only
+    setMotorState(i, ON);
+    setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
   updateDisplay();
@@ -4311,6 +4376,14 @@ RESET:
 
       case 0x9F:    /* LED */
         commandLED(commandParam[1], commandParam[2], commandParam[3]);
+        break;
+		
+	  case 0xA0:    /* GETCURR */
+        sendText(commandGetMotorCurrent(commandParam[1]));
+        break;
+
+      case 0xA1:    /* SETCURR */
+        commandSetMotorCurrent(commandParam[1], commandParam[2]);
         break;
 
       default:
