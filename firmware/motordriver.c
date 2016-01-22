@@ -555,7 +555,7 @@ progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 /* initializer */
 void initDataStructs(void);
 void initUSART(void);
-void initADC(void);
+//void initADC(void);
 void initMotorDelayTimer(void);
 
 /* functionality */
@@ -626,6 +626,8 @@ void commandDebugReadout(void);
 
 
 uint8_t reverseBitOrder(uint8_t b);
+
+uint8_t getMotorSens(uint8_t mot, uint8_t sens);
 
 
 /* =====================================================================
@@ -737,22 +739,24 @@ void initUSART(void){
 /* ---------------------------------------------------------------------
    inits the ADC
  --------------------------------------------------------------------- */
+ /*
 void initADC(void){
 
-  ADMUX   = (1<<REFS0);  /* AVcc voltage reference */
+  ADMUX   = (1<<REFS0);  // AVcc voltage reference
   ADCSRA  = (1<<ADEN)|(1<<ADPS1)|(1<<ADPS0);
 
-  /* start one conversion for initializing */
+  // start one conversion for initializing
   ADCSRA  |= (1<<ADSC);
 
   while(ADCSRA & (1<<ADSC)){
     ;
   }
 
-  (void)ADCW; /* dummy read out */
+  (void)ADCW; // dummy read out
 
   return;
 }
+*/
 
 /* ---------------------------------------------------------------------
    initialize buffers
@@ -944,14 +948,16 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 1;    /* set 1 ms for fast moving */
 
   /* in case we are at any possible zero position: move out */
-  while(getADCvalue(i) < thres){
+  //while(getADCvalue(i) < thres){
+  while(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, -200);
   }
 
   /* start first search for zero point */
   for(j = 0; j < (uint16_t)round(stepsPerRound); j++){
     moveMotorRelative(i, 1);
-    if(getADCvalue(i) < thres){
+    //if(getADCvalue(i) < thres){
+	if(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
       /* we found a zero position */
       break;
     }
@@ -974,7 +980,8 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 5;
 
   /* and move till the threshold is reached */
-  while(getADCvalue(i) > thres){
+  //while(getADCvalue(i) > thres){
+  while(!getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, 1);
   }
   /* and here we found our magnetic zero position :-) */
@@ -1005,13 +1012,13 @@ uint16_t getADCvalue(uint8_t sensPin){
   uint8_t i = 0;
   uint8_t lowByte, highByte;
 
-  /* select channel */
+  // select channel
   ADMUX = (ADMUX & ~(0x1F)) | (sensPin & 0x1F);
 
-  /* reset all values and counters before starting new conversion */
+  // reset all values and counters before starting new conversion
   adc.ADCvalue = 0;
 
-  /* start the conversion */
+  // start the conversion
   for(i = 0; i < adc.numberOfMeasurements; i++){
     ADCSRA |= (1<<ADSC);
     while(ADCSRA & (1<<ADSC)){
@@ -2952,6 +2959,30 @@ void wakeMotorUp(uint8_t mot){
   return;
 }
 
+/* ---------------------------------------------------------------------
+     read motor port expander input pin
+ --------------------------------------------------------------------- */
+uint8_t getMotorSens(uint8_t mot, uint8_t sens){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+  uint8_t state = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOB);
+  
+  //sprintf(txString.buffer, "\nregval=%X", regval);
+  //sendText(txString.buffer);
+  
+  if(regval &= (1<<sens)){
+    state = 1;
+  }
+  else{
+    state = 0;
+  }
+
+  return state;
+}
 
 /* =====================================================================
     DAC subsystem
@@ -3876,21 +3907,15 @@ void commandDebugReadout(){
  --------------------------------------------------------------------- */
 void commandLED(char* param0, char* param1, char* param2){
 
-	// mot, curr, x
-
-  uint8_t a, c;
-  double b = 0.0f;
-  float curr = 0.0;
+  uint8_t a, b, c;
 
   a = (uint8_t)strtol(param0, (char **)NULL, 10);
   b = (uint8_t)strtol(param1, (char **)NULL, 10);
   c = (uint8_t)strtol(param2, (char **)NULL, 16);
   
-  initDAC(a);
-  setMotorCurrent(a, b);
-  curr = getMotorCurrent(a);
+  c = getMotorSens(a, b);
   
-  sprintf(txString.buffer, "\na=%d\nb=%f\ncurr=%f", a, b, curr);
+  sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
   sendText(txString.buffer);
 
   //changeButtonLED(a, b, c);
