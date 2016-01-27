@@ -242,6 +242,7 @@ typedef struct{
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
+  double   current;                /* in ampere */
 
 }motorInfo;
 
@@ -454,8 +455,9 @@ ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
 ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
 ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
 ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
+ADD_DISPLAY_TEXT(12, "Change motor\ncurrent\0"         )
 
-#define NUMBER_OF_DISPLAY_MENUS 12
+#define NUMBER_OF_DISPLAY_MENUS 13
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -469,13 +471,15 @@ ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
 #define MENU_OPTICAL_ZERO_POS       9
 #define MENU_CONST_ANGULAR_SPEED    10
 #define MENU_RUN_PROGRAM            11
+#define MENU_CHANGE_CURR            12
 
 
 /* to hold a list of menu entries */
 const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
-                                            &disp_9_,  &disp_10_, &disp_11_
+                                            &disp_9_,  &disp_10_, &disp_11_,
+											&disp_12_
                                            };
 
 /* to keep information where we are in the menu */
@@ -542,6 +546,7 @@ double   EEMEM gearRatioEE[MAX_MOTOR+1];
 double   EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
 double   EEMEM subStepsEE[MAX_MOTOR+1];
 double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
+double   EEMEM currentEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
@@ -657,6 +662,7 @@ void initDataStructs(void){
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
+	motor[i].current              = 1.0;
   }
 
   rxString.charCount = 0;
@@ -1046,6 +1052,7 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_update_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -1079,6 +1086,7 @@ void loadConfigFromEEPROM(void){
       eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_read_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -2150,6 +2158,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       sprintf(menu.newDisplayValue[2], "Step %d" , menu.currentProgramStep);
       sprintf(menu.newDisplayValue[3], "        ");
       break;
+	  
+	case MENU_CHANGE_CURR:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.1f A", c, motor[i].current);
+      }
+      break;
 
     default:  /* in case of fire ;-) */
       break;
@@ -2461,6 +2476,22 @@ void updateMenu(void){
           else{
             ;
           }
+          break;
+		  
+		case MENU_CHANGE_CURR:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].current += (rotEncVal)/10.0;
+			  if(motor[i].current < 0){
+                motor[i].current = 0;
+              }
+              if(motor[i].current > 2.5){
+                motor[i].current = 2.5;
+              }
+			  setMotorCurrent(i, motor[i].current);
+            }
+          }
+		  
           break;
 
         default:  /* in case of fire ;-) */
@@ -3862,17 +3893,19 @@ void commandSetMotorCurrent(char* param0, char* param1){
   
   uint8_t i = 0;
   //float curr = 0.0f;
-  double curr = 0.0;
+  //double curr = 0.0;
   
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
-  curr = atof(param1);
+  //curr = atof(param1);
   
   if(i < MOTOR0 || i > MAX_MOTOR){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
 	sendText(txString.buffer);
   }
   else{
-    setMotorCurrent(i, curr);
+    //setMotorCurrent(i, curr);
+	motor[i].current = atof(param1);
+	setMotorCurrent(i, motor[i].current);
   }
   
   //sprintf(txString.buffer, "\nmot %d\ncurr=%f", i, curr);
@@ -4018,7 +4051,7 @@ ISR(TIMER0_COMPA_vect){
 ISR(INT0_vect){
    
   //sendText("INT0");
-  _delay_us(100);	//without delay a button press causes reset!
+  _delay_us(200);	//without delay a button press causes reset!
   
   uint8_t regVal = 0;
   
@@ -4229,8 +4262,8 @@ RESET:
   for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
     initPortExpander(getPortExpanderAddress(i));
     initDAC(i);
-	setMotorCurrent(i, 1.3);  //this is a default value for testing only
-    setMotorState(i, ON);
+	setMotorCurrent(i, motor[i].current);
+    //setMotorState(i, ON);
     setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
