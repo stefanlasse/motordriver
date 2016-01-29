@@ -1,27 +1,12 @@
 /* =====================================================================
 
-    Firmware for Motordriver
-
-    3. Physikalisches Institut, University of Stuttgart
+    Firmware for Motordriver / SMCx242
 
  ===================================================================== */
 
 /*
- *   Motordriver: 3. PI, Uni Stuttgart
- *   Copyright (C) 2014  Stefan Lasse
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *   Motordriver
+ *   Copyright (C) 2016 LK-Instruments
  */
 
 #define F_CPU 20000000UL /* in Hz */
@@ -45,7 +30,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION (" 1.4")
+#define FW_VERSION (" 1.5")
 
 #define IDN_STRING_LENGTH 50
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -74,7 +59,8 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR1
+#define MAX_MOTOR           MOTOR3  //set to MOTOR1 for 2 or MOTOR3 for 4 channel version
+
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -94,9 +80,9 @@
 
 /* LED definitions for buttons */
 #define BUTT_LED_CHANNELS 48
-#define RED     0
+#define RED     2
 #define GREEN   1
-#define BLUE    2
+#define BLUE    0
 
 #define WS2803_CKI  PC7
 #define WS2803_SDI  PC6
@@ -147,7 +133,7 @@
 #define R_SENS 0.2
 
 /* ---------------------------------------------------------------------
-    MCP23017 registers
+    MCP23017 registers (for IOCON.BANK = 0 which is default)
  --------------------------------------------------------------------- */
 #define IODIRA      0x00
 #define IODIRB      0x01
@@ -251,12 +237,13 @@ typedef struct{
   uint8_t  isMovingInfinite;
   double   gearRatio;              /* initially set to 60:18 */
   double   stepsPerFullRotation;   /* initially set to 400 */
-  double   subSteps;               /* could be 1, 2, 4, 8, 16 */
+  double   subSteps;               /* could be 1, 2, 4, 8, 16, 32 */
   int8_t   stepUnit;               /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
+  double   current;                /* in ampere */
 
 }motorInfo;
 
@@ -287,8 +274,8 @@ typedef struct{
 #define DYNAMICS 40
 
 
-const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
-//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
+//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
+const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
 //const int16_t table[16] PROGMEM = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};
 
 typedef struct{
@@ -398,7 +385,10 @@ ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manua
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
 ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
 
-#define TOTAL_NUMBER_OF_COMMANDS 32
+ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
+ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
+
+#define TOTAL_NUMBER_OF_COMMANDS 34
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -410,7 +400,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
-                                              &cmd_30_, &cmd_31_
+                                              &cmd_30_, &cmd_31_, &cmd_32_,
+											  &cmd_33_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -453,7 +444,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC2422\0")
+ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0")
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
 ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
@@ -465,8 +456,9 @@ ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
 ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
 ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
 ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
+ADD_DISPLAY_TEXT(12, "Change motor\ncurrent\0"         )
 
-#define NUMBER_OF_DISPLAY_MENUS 12
+#define NUMBER_OF_DISPLAY_MENUS 13
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -480,13 +472,15 @@ ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
 #define MENU_OPTICAL_ZERO_POS       9
 #define MENU_CONST_ANGULAR_SPEED    10
 #define MENU_RUN_PROGRAM            11
+#define MENU_CHANGE_CURR            12
 
 
 /* to hold a list of menu entries */
 const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
-                                            &disp_9_,  &disp_10_, &disp_11_
+                                            &disp_9_,  &disp_10_, &disp_11_,
+											&disp_12_
                                            };
 
 /* to keep information where we are in the menu */
@@ -553,6 +547,7 @@ double   EEMEM gearRatioEE[MAX_MOTOR+1];
 double   EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
 double   EEMEM subStepsEE[MAX_MOTOR+1];
 double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
+double   EEMEM currentEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
@@ -566,7 +561,7 @@ progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 /* initializer */
 void initDataStructs(void);
 void initUSART(void);
-void initADC(void);
+//void initADC(void);
 void initMotorDelayTimer(void);
 
 /* functionality */
@@ -636,6 +631,11 @@ void commandGetMotorState(char* param0);
 void commandDebugReadout(void);
 
 
+uint8_t reverseBitOrder(uint8_t b);
+
+uint8_t getMotorSens(uint8_t mot, uint8_t sens);
+
+
 /* =====================================================================
     initialization functions
 ====================================================================== */
@@ -663,6 +663,7 @@ void initDataStructs(void){
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
+	motor[i].current              = 1.0;
   }
 
   rxString.charCount = 0;
@@ -745,22 +746,24 @@ void initUSART(void){
 /* ---------------------------------------------------------------------
    inits the ADC
  --------------------------------------------------------------------- */
+ /*
 void initADC(void){
 
-  ADMUX   = (1<<REFS0);  /* AVcc voltage reference */
+  ADMUX   = (1<<REFS0);  // AVcc voltage reference
   ADCSRA  = (1<<ADEN)|(1<<ADPS1)|(1<<ADPS0);
 
-  /* start one conversion for initializing */
+  // start one conversion for initializing
   ADCSRA  |= (1<<ADSC);
 
   while(ADCSRA & (1<<ADSC)){
     ;
   }
 
-  (void)ADCW; /* dummy read out */
+  (void)ADCW; // dummy read out
 
   return;
 }
+*/
 
 /* ---------------------------------------------------------------------
    initialize buffers
@@ -952,14 +955,16 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 1;    /* set 1 ms for fast moving */
 
   /* in case we are at any possible zero position: move out */
-  while(getADCvalue(i) < thres){
+  //while(getADCvalue(i) < thres){
+  while(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, -200);
   }
 
   /* start first search for zero point */
   for(j = 0; j < (uint16_t)round(stepsPerRound); j++){
     moveMotorRelative(i, 1);
-    if(getADCvalue(i) < thres){
+    //if(getADCvalue(i) < thres){
+	if(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
       /* we found a zero position */
       break;
     }
@@ -982,7 +987,8 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 5;
 
   /* and move till the threshold is reached */
-  while(getADCvalue(i) > thres){
+  //while(getADCvalue(i) > thres){
+  while(!getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, 1);
   }
   /* and here we found our magnetic zero position :-) */
@@ -1013,13 +1019,13 @@ uint16_t getADCvalue(uint8_t sensPin){
   uint8_t i = 0;
   uint8_t lowByte, highByte;
 
-  /* select channel */
+  // select channel
   ADMUX = (ADMUX & ~(0x1F)) | (sensPin & 0x1F);
 
-  /* reset all values and counters before starting new conversion */
+  // reset all values and counters before starting new conversion
   adc.ADCvalue = 0;
 
-  /* start the conversion */
+  // start the conversion
   for(i = 0; i < adc.numberOfMeasurements; i++){
     ADCSRA |= (1<<ADSC);
     while(ADCSRA & (1<<ADSC)){
@@ -1047,6 +1053,7 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_update_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -1080,6 +1087,7 @@ void loadConfigFromEEPROM(void){
       eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_read_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -1719,10 +1727,17 @@ void lcd_generatechar(uint8_t code, const uint8_t *data){
    change button LED color/intensity
  --------------------------------------------------------------------- */
 void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
-
+  
   uint8_t chan = 0;
-
-  chan = 6*butt+color;
+  
+  switch(butt) {
+	case 0: chan = 6*2+color; break;
+	case 1: chan = 6*1+color; break;
+	case 2: chan = 6*0+color; break;
+	case 3: chan = 6*5+color; break;
+	case 4: chan = 6*4+color; break;
+	default: chan = 0; break;
+  }
 
   buttLedData[chan]   = intensity;
   buttLedData[chan+3] = intensity;
@@ -1734,54 +1749,37 @@ void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
    update LEDs
  --------------------------------------------------------------------- */
 void updateLEDs(void){
-
+  
   uint16_t i = 0;
   uint8_t  j = 0;
   uint8_t data = 0;
+  uint8_t outbyte = 0;
 
-  PORTC |= (1<<WS2803_CKI);
-  _delay_us(50);
-  PORTC &= ~(1<<WS2803_CKI);
-  _delay_us(450);
+  for(i = BUTT_LED_CHANNELS - 1; i < 255; i--){
+	data = buttLedData[i];
+	for(uint8_t i=7; i<255; i--)
+    {
+        outbyte = (data>>i) & 0x01;
+        // Set the data pin to given value, and clk pin to 0
+        if(outbyte)
+        {
+            PORTC |= (outbyte << WS2803_SDI);
+        }
+        else
+        {
+            PORTC &= ~(outbyte << WS2803_SDI);
+        }
+        PORTC &= ~(1 << WS2803_CKI);
+        _delay_us(10);
 
-  PORTC |= (1<<WS2803_SDI);
-  _delay_us(10);
-  for(i=0;i<500;i++){
-    _delay_us(10);
-    PORTC |= (1<<WS2803_CKI);
-    _delay_us(10);
-    PORTC &= ~(1<<WS2803_CKI);
-  }
+        // Keep the data pin, and set clk pin to 1 (strobe)
+        PORTC |= 1 << WS2803_CKI;
+        _delay_us(10);
 
-#if 0
-  /* now do some bit flips */
-  /* prepare cycle */
-  PORTC &= ~(1<<WS2803_CKI);
-  PORTC &= ~(1<<WS2803_SDI);  /* start with DATA = zero */
-  _delay_us(550);
-
-  for(i = BUTT_LED_CHANNELS - 1; i >= 0; i--){
-    data = buttLedData[i];
-    for(j = 7; j >= 0; j--){
-      if(data & (1<<j)){
-        PORTC |= (1<<WS2803_SDI);
-      }
-      else{
-        PORTC &= ~(1<<WS2803_SDI);
-      }
-      /* do a clock cycle */
-      _delay_us(1);
-      PORTC |= (1<<WS2803_CKI);
-      _delay_us(1);
-      PORTC &= ~(1<<WS2803_CKI);
-      _delay_us(1);
+        // Zero both clk and data pins
+        PORTC &= ~((1 << WS2803_SDI) | (1 << WS2803_CKI));
     }
   }
-
-  /* pull CKI to logic 1 till next update */
-  PORTC |= (1<<WS2803_CKI);
-
-#endif
 
   return;
 }
@@ -2022,8 +2020,8 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   /* load the values of all 4 motors */
   switch(state){
     case MENU_MAIN:   /* main menu point, no values here to change */
-      sprintf(menu.newDisplayValue[0], "3.PI  Un");
-      sprintf(menu.newDisplayValue[1], "i Stutt.");
+      sprintf(menu.newDisplayValue[0], "SMCx242 ");
+      sprintf(menu.newDisplayValue[1], "        ");
       sprintf(menu.newDisplayValue[2], "Firmware");
       sprintf(menu.newDisplayValue[3], FW_VERSION);
       break;
@@ -2161,6 +2159,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       sprintf(menu.newDisplayValue[2], "Step %d" , menu.currentProgramStep);
       sprintf(menu.newDisplayValue[3], "        ");
       break;
+	  
+	case MENU_CHANGE_CURR:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.1f A", c, motor[i].current);
+      }
+      break;
 
     default:  /* in case of fire ;-) */
       break;
@@ -2194,6 +2199,7 @@ void updateMenu(void){
   menuItem *menuPtr;
 
   uint8_t i = 0;
+  uint8_t tmp = 0;
 
   /* first check if we have something to change at all */
   if(buttonState.readyToProcess == 0 && rotEnc.readyToProcess == 0){
@@ -2365,18 +2371,24 @@ void updateMenu(void){
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              if(rotEncVal > 0){
-                motor[i].subSteps *= 2.0;
+              tmp = motor[i].subSteps;
+			  if(rotEncVal > 0){
+                //motor[i].subSteps *= 2.0;
+				tmp *= 2.0;
               }
               if(rotEncVal < 0){
-                motor[i].subSteps /= 2.0;
+                //motor[i].subSteps /= 2.0;
+				tmp /= 2.0;
               }
               if(motor[i].subSteps < 1){
-                motor[i].subSteps = 1;
+                //motor[i].subSteps = 1;
+				tmp = 1;
               }
               if(motor[i].subSteps > 32){
-                motor[i].subSteps = 32;
+                //motor[i].subSteps = 32;
+				tmp = 32;
               }
+			  setSubSteps(i,tmp);
             }
           }
           break;
@@ -2465,6 +2477,22 @@ void updateMenu(void){
           else{
             ;
           }
+          break;
+		  
+		case MENU_CHANGE_CURR:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].current += (rotEncVal)/10.0;
+			  if(motor[i].current < 0){
+                motor[i].current = 0;
+              }
+              if(motor[i].current > 2.5){
+                motor[i].current = 2.5;
+              }
+			  setMotorCurrent(i, motor[i].current);
+            }
+          }
+		  
           break;
 
         default:  /* in case of fire ;-) */
@@ -2809,16 +2837,36 @@ uint8_t reverseBitOrder(uint8_t b){
 
 /* ---------------------------------------------------------------------
    sets the desired motor substeps
+   function takes a value 1...32   
  --------------------------------------------------------------------- */
 void setSubSteps(uint8_t mot, uint8_t steps){
 
   uint8_t addr = 0;
   uint8_t regval = 0;
-
+  
+  /*
   if(steps > 5){
     steps = 5;
   }
-
+  */
+  
+  if(steps > 32){
+    steps = 32;
+  }
+  if(steps < 1){
+    steps = 1;
+  }
+  
+  //convert steps from 1...32 to 0...5
+  uint8_t tmp_steps = 0;
+  tmp_steps = steps;
+  steps = 0;
+  
+  while(tmp_steps != 1){
+    tmp_steps = tmp_steps >> 1;
+	steps++ ;
+  }
+  
   addr = getPortExpanderAddress(mot);
   regval = readPortExpanderRegister(addr, GPIOA);
 
@@ -2826,7 +2874,7 @@ void setSubSteps(uint8_t mot, uint8_t steps){
 
   regval |= (reverseBitOrder(steps) & 0xE0) >> 5;
   writePortExpanderRegister(addr, GPIOA, regval);
-
+  
   motor[mot].subSteps = (1<<steps);
 
   return;
@@ -2950,6 +2998,30 @@ void wakeMotorUp(uint8_t mot){
   return;
 }
 
+/* ---------------------------------------------------------------------
+     read motor port expander input pin
+ --------------------------------------------------------------------- */
+uint8_t getMotorSens(uint8_t mot, uint8_t sens){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+  uint8_t state = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOB);
+  
+  //sprintf(txString.buffer, "\nregval=%X", regval);
+  //sendText(txString.buffer);
+  
+  if(regval &= (1<<sens)){
+    state = 1;
+  }
+  else{
+    state = 0;
+  }
+
+  return state;
+}
 
 /* =====================================================================
     DAC subsystem
@@ -2980,7 +3052,7 @@ void setMotorCurrent(uint8_t mot, float curr){
   uint16_t reg = 0;
 
   if(curr < 0.0){
-    curr = -curr;
+    curr = 0.0;
   }
 
   if(curr > 2.5){ /* maximum for DRV8825: 2.5 Ampere */
@@ -2989,6 +3061,10 @@ void setMotorCurrent(uint8_t mot, float curr){
 
   addr = getDACAddress(mot);
 
+  //I = Vref / (5 * Rsense)
+  //with Rsense = 0.2 Ohm
+  // --> I = Vref
+  
   /* 255 / 3.3V * 2.5A = 193 */
   /* 193 <=> 2.5 A, 193/2.5 = 77.2 */
 
@@ -3050,12 +3126,15 @@ void initManualOperatingButtons(void){
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
   //writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x00);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xF8);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x03);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xF8);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+  
+  //read GPIO register to clear the interrupt
+  uint8_t tmp = 0;
+  tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
 
-  /* read from interrupt capture register to clear it */
-  tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
 
   /* activate interrupt on INT0 (PD2) */
   //EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
@@ -3088,9 +3167,12 @@ uint8_t getButtonEvent(void){
 
   if(buttonState.readyToProcess){
     /* a button has been pressed */
-    state = buttonState.inputRegister/*^0xFF*/;   /* invert state register TODO: ??? */
-
-    if(state & (1<<BUTTON_MOTOR0)){
+    state = buttonState.inputRegister;
+	
+	if(rotEnc.buttonPressed){
+      button = BUTTON_ROT_ENC_PRESS;
+	}
+	else if(state & (1<<BUTTON_MOTOR0)){
       button = BUTTON_MOTOR0;
     }
     else if(state & (1<<BUTTON_MOTOR1)){
@@ -3104,9 +3186,6 @@ uint8_t getButtonEvent(void){
     }
     else if(state & (1<<BUTTON_MENUESCAPE)){
       button = BUTTON_MENUESCAPE;
-    }
-    else if(rotEnc.buttonPressed){
-      button = BUTTON_ROT_ENC_PRESS;
     }
     else{
       button = NO_BUTTON;
@@ -3122,7 +3201,7 @@ uint8_t getButtonEvent(void){
 int8_t getRotaryEncoderEvent(void){
 
   /*
-   * returns the turned steps of the rotary encoder since
+   * returns the turned steps of the rotary encoder
    * since last look-up here
    */
 
@@ -3527,7 +3606,8 @@ void commandSetSubSteps(char* param0, char* param1){
   }
   else{
     val = (double)atof(param1);
-    motor[i].subSteps = val;
+    //motor[i].subSteps = val;
+	setSubSteps(i, (uint8_t)round(val));
   }
 
   return;
@@ -3800,6 +3880,55 @@ void commandGetMotorState(char* param0){
 }
 
 /* ---------------------------------------------------------------------
+    returns the adjusted motor current
+ --------------------------------------------------------------------- */
+char* commandGetMotorCurrent(char* param0){
+
+  uint8_t i = 0;
+  double curr = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+  }
+  else{
+    curr = getMotorCurrent(i);
+    sprintf(txString.buffer, "%f", curr);
+  }
+  
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the desired motor current
+ --------------------------------------------------------------------- */
+void commandSetMotorCurrent(char* param0, char* param1){
+  
+  uint8_t i = 0;
+  //float curr = 0.0f;
+  //double curr = 0.0;
+  
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  //curr = atof(param1);
+  
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+	sendText(txString.buffer);
+  }
+  else{
+    //setMotorCurrent(i, curr);
+	motor[i].current = atof(param1);
+	setMotorCurrent(i, motor[i].current);
+  }
+  
+  //sprintf(txString.buffer, "\nmot %d\ncurr=%f", i, curr);
+  //sendText(txString.buffer);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
 void commandDebugReadout(){
@@ -3823,19 +3952,23 @@ void commandDebugReadout(){
 /* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
-void commandLED(char* param0, char* param1){
+void commandLED(char* param0, char* param1, char* param2){
 
   uint8_t a, b, c;
 
-  a = (uint8_t)strtol(param0, (char **)NULL, 16);
-  b = (uint8_t)strtol(param1, (char **)NULL, 16);
-
-  //c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
-  c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
-
-  sprintf(txString.buffer, "\n%X\n%X", PINC, reverseBitOrder(c));
+  a = (uint8_t)strtol(param0, (char **)NULL, 10);
+  b = (uint8_t)strtol(param1, (char **)NULL, 10);
+  c = (uint8_t)strtol(param2, (char **)NULL, 16);
+  
+  c = getMotorSens(a, b);
+  
+  sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
   sendText(txString.buffer);
 
+  //changeButtonLED(a, b, c);
+  //updateLEDs();
+  
+  return;
 }
 
 /* =====================================================================
@@ -3894,20 +4027,19 @@ ISR(TIMER0_COMPA_vect){
   if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
     /* button was pressed */
     if(rotEnc.buttonDebounce == 0){
-      /* enter debouncing mode */
-      rotEnc.buttonDebounce = 1;
+      // enter debouncing mode
+	  rotEnc.buttonDebounce = 1;
     }
-    else{
-      /* we are already in debouncing mode */
-      if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
-        /* button is still pressed -> generate event */
+  }
+  else{
+      /* button is no longer pressed ...*/
+      if(rotEnc.buttonDebounce == 1){
+        /* ... and we are already in debouncing mode -> generate event */
         rotEnc.buttonPressed = 1;
         rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
-    }
   }
-
 
   /* now care about the rotary encoder rotations
    *
@@ -3931,13 +4063,14 @@ ISR(TIMER0_COMPA_vect){
     a button seems to be pressed ;-)
  --------------------------------------------------------------------- */
 ISR(INT0_vect){
-
+   
+  //sendText("INT0");
+  _delay_us(200);	//without delay a button press causes reset!
+  
   uint8_t regVal = 0;
-
-  sendText("INT0");
+  
   regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
-  regVal = reverseBitOrder(regVal);
-
+  
   /* check if a button is actually in process */
   if(buttonState.readyToProcess){
     return;
@@ -3946,6 +4079,7 @@ ISR(INT0_vect){
     buttonState.inputRegister = regVal;
     buttonState.readyToProcess = 1;
   }
+
 }
 
 /* ---------------------------------------------------------------------
@@ -4106,9 +4240,10 @@ int main(void){
 
   /* initialize data for LEDs and WS2803 output pins */
   for(i = 0; i < BUTT_LED_CHANNELS; i++){
-    buttLedData[i] = 255;
+    buttLedData[i] = 0;
   }
-  DDRC |= (1<<WS2803_CKI)|(1<<WS2803_SDI);
+  DDRC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
+  PORTC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
 
   /* initialize PORTA as output for motor Step/Direction */
   DDRA  = 0xFF;
@@ -4139,14 +4274,23 @@ RESET:
   //loadConfigFromEEPROM();
 
   /* turn on all available motors */
-  for(i = 0; i <= MAX_MOTOR; i++){
+  //for(i = 0; i <= MAX_MOTOR; i++){
+  for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
     initPortExpander(getPortExpanderAddress(i));
-    //initDAC(i);
+    initDAC(i);
+	setMotorCurrent(i, motor[i].current);
     //setMotorState(i, ON);
-    //setSubSteps(i, (uint8_t)round(motor[i].subSteps));
+    setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
   updateDisplay();
+  
+  //init LEDs with default color pattern
+  for(i = 0; i < 4; i++){
+    changeButtonLED(i, GREEN, 0x7F);
+  }
+  changeButtonLED(LED_MESC, RED, 0x7F);
+  updateLEDs();
 
   sei();  /* turn on interrupts */
 
@@ -4304,8 +4448,16 @@ RESET:
         commandDebugReadout();
         break;
 
-      case 0x9F:
-        commandLED(commandParam[1], commandParam[2]);
+      case 0x9F:    /* LED */
+        commandLED(commandParam[1], commandParam[2], commandParam[3]);
+        break;
+		
+	  case 0xA0:    /* GETCURR */
+        sendText(commandGetMotorCurrent(commandParam[1]));
+        break;
+
+      case 0xA1:    /* SETCURR */
+        commandSetMotorCurrent(commandParam[1], commandParam[2]);
         break;
 
       default:
