@@ -1,0 +1,13 @@
+
+avrdude -p atmega1284p -c siprog -P COM1 -U flash:w:optiboot_atmega1284p.hex
+
+avrdude -p atmega1284p -c siprog -P COM1 -U lfuse:w:0xff:m
+avrdude -p atmega1284p -c siprog -P COM1 -U hfuse:w:0xdc:m
+avrdude -p atmega1284p -c siprog -P COM1 -U efuse:w:0xfc:m
+
+avrdude -p atmega1284p -c siprog -P COM1 -U lfuse:w:0xff:m -U hfuse:w:0xdc:m -U efuse:w:0xfc:m
+
+avrdude -F -p atmega1284p -P COM17 -c stk500v1 -b 115200 -U flash:w:motordriver.hex
+
+
+Um den Bootloader zu flashen MUSS der Reset-Taster auf der Platine gedrückt gehalten werden. Es genügt nicht den Resetpin mit einem Jumperwire mit GND zu verbinden. WARUM?!?

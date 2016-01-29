@@ -74,7 +74,7 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR2
+#define MAX_MOTOR           MOTOR1
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -2580,12 +2580,12 @@ void IICwrite(uint8_t addr, uint8_t* data, uint8_t numDat){
   uint8_t i = 0;
 
   IICstart();
-  if(IICgetStatus() !=  TW_START){
+  if(IICgetStatus() != TW_START){
     /* error handling */
   }
 
   IICsendByte(addr | TW_WRITE);
-  if(IICgetStatus() !=  TW_MT_SLA_ACK){
+  if(IICgetStatus() != TW_MT_SLA_ACK){
     /* error handling */
   }
 
@@ -2750,35 +2750,42 @@ uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg){
 
   uint8_t val = 0;
 
+
   ATOMIC_BLOCK(ATOMIC_FORCEON){
     IICstart();
     if(IICgetStatus() != TW_START){
       /* error handling */
+      sendText("r no sta");
     }
 
     IICsendByte(addr | TW_WRITE);
-    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+    if(IICgetStatus() !=  TW_MT_SLA_ACK){
       /* error handling */
+      sendText("r no addr ack");
     }
 
     IICsendByte(reg);
-    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+    if(IICgetStatus() !=  TW_MT_DATA_ACK){
       /* error handling */
+      sendText("r no reg ack");
     }
 
     IICstart();
-    if(IICgetStatus() != TW_START){
+    if(IICgetStatus() != TW_REP_START){
       /* error handling */
+      sendText("r no rsta ack");
     }
 
     IICsendByte(addr | TW_READ);
     if(IICgetStatus() !=  TW_MR_SLA_ACK){
       /* error handling */
+      sendText("r no addr rd ack");
     }
 
     val = IICreadNACK();
     if(IICgetStatus() !=  TW_MR_DATA_NACK){
       /* error handling */
+      sendText("r no nack");
     }
 
     IICstop();
@@ -3029,6 +3036,8 @@ float getMotorCurrent(uint8_t mot){
  --------------------------------------------------------------------- */
 void initManualOperatingButtons(void){
 
+  uint8_t tmp;
+
   /* only for rotary encoder + its button */
   PORTC |= (1<<PC5)|(1<<PC4)|(1<<PC3);   /* set internal pull-ups */
 
@@ -3038,15 +3047,20 @@ void initManualOperatingButtons(void){
    *
    */
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON, 0x22);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+  //writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x00);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xFF);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+
+  /* read from interrupt capture register to clear it */
+  tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
 
   /* activate interrupt on INT0 (PD2) */
-  EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
+  //EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
+  EICRA |= (1<<ISC01);  /* falling edge causes interrupt */
+  //EICRA |= (1<<ISC00);  /* any edge causes interrupt */
   EIMSK |= (1<<INT0);   /* enable interrupt pin INT0 */
 
   /* set up a timer for button/rotary_encoder polling
@@ -3816,9 +3830,10 @@ void commandLED(char* param0, char* param1){
   a = (uint8_t)strtol(param0, (char **)NULL, 16);
   b = (uint8_t)strtol(param1, (char **)NULL, 16);
 
+  //c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
   c = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
 
-  sprintf(txString.buffer, "\n%X\n%X", PINC, c);
+  sprintf(txString.buffer, "\n%X\n%X", PINC, reverseBitOrder(c));
   sendText(txString.buffer);
 
 }
@@ -3878,7 +3893,6 @@ ISR(TIMER0_COMPA_vect){
   /* handle rotEnc's button */
   if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
     /* button was pressed */
-    sendText("reb pressed");
     if(rotEnc.buttonDebounce == 0){
       /* enter debouncing mode */
       rotEnc.buttonDebounce = 1;
@@ -3888,7 +3902,6 @@ ISR(TIMER0_COMPA_vect){
       if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
         /* button is still pressed -> generate event */
         rotEnc.buttonPressed = 1;
-        sendText("reb pressed");
         rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
@@ -3921,9 +3934,9 @@ ISR(INT0_vect){
 
   uint8_t regVal = 0;
 
-  regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
-
   sendText("INT0");
+  regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
+  regVal = reverseBitOrder(regVal);
 
   /* check if a button is actually in process */
   if(buttonState.readyToProcess){
@@ -4106,22 +4119,24 @@ int main(void){
 
   /* OLED setup */
   OLEDinit(OLED_V2);
-  _delay_ms(500);
+  _delay_ms(1500);
   OLEDclear();
   OLEDsetCursor(0, 0);
 
 RESET:
+
   initDataStructs();  /* must be the first function after reset! */
   initBuffers();
+  initUSART();
   //initADC();
   initIIC();
   initMotorDelayTimer();
   initManualOperatingButtons();
-  initUSART();
+
 
   /* TODO: detect motors if connected */
 
-  loadConfigFromEEPROM();
+  //loadConfigFromEEPROM();
 
   /* turn on all available motors */
   for(i = 0; i <= MAX_MOTOR; i++){

@@ -1,0 +1,36 @@
+WS2801 library for AVR.
+
+WS2801 is a common RGB LED driver. This library is a simple and lightweight
+solution to control it.
+No .h files here, just define required constants and inlcude .c file in your
+code.
+
+Example usage:
+// Make sure that F_CPU is defined at this point
+// Port where WS2801 is connected to (e.g PORTA, PORTC, etc...)
+#define WS2801_OUT_PORT PORTA
+
+// Pin number where 'clock' input of WS2801 is connected to, digit from 0 to 7
+#define WS2801_CLK_PIN 0
+
+// Pin number where 'data' input of WS2801 is connected to, digit from 0 to 7
+#define WS2801_DATA_PIN 1
+
+// Length of LED strip (in LEDs)
+#define WS2801_STRIP_LEN 32
+
+#include <ws2801/ws2801.c>
+
+...
+void let_there_be_light()
+{
+    // Adjust port registers (change to your port here)
+    DDRA = (1 << WS2801_CLK_PIN) | (1 << WS2801_DATA_PIN)
+    PORTA = (1 << WS2801_CLK_PIN) | (1 << WS2801_DATA_PIN)
+
+    // Zeroing the strip
+    ws2801_reset();
+
+    // Light up all LED at half of power
+    ws2801_set_brightness(128);
+}
