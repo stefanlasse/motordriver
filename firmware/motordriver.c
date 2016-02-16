@@ -135,8 +135,8 @@ typedef struct{
 
 typedef struct{
 
-  int16_t  actualPosition;         /* always in steps */
-  int16_t  desiredPosition;        /* always in steps */
+  int32_t  actualPosition;         /* always in steps */
+  int32_t  desiredPosition;        /* always in steps */
   int16_t  opticalZeroPosition;    /* as offset from zero position in steps */
   double   stepError;
   uint8_t  isMoving;
