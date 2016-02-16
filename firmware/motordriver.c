@@ -401,7 +401,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
                                               &cmd_30_, &cmd_31_, &cmd_32_,
-											  &cmd_33_
+                                              &cmd_33_
                                              };
 
 /* ---------------------------------------------------------------------
