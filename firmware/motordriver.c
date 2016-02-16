@@ -61,7 +61,6 @@
 #define DUMMY_MOTOR         4
 #define MAX_MOTOR           MOTOR3  //set to MOTOR1 for 2 or MOTOR3 for 4 channel version
 
-
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
 #define MOTOR_SENS2         PA2
@@ -130,7 +129,7 @@
 
 #define EXT_EEPROM_ADDR             0xA0
 
-#define R_SENS 0.2
+//#define R_SENS 0.2
 
 /* ---------------------------------------------------------------------
     MCP23017 registers (for IOCON.BANK = 0 which is default)
@@ -235,7 +234,7 @@ typedef struct{
   uint8_t  isMoving;
   uint8_t  isTurnedOn;
   uint8_t  isMovingInfinite;
-  double   gearRatio;              /* initially set to 60:18 */
+  double   gearRatio;              /* initially set to 60:18 for old motors, 60:20 for M101 and 1:1 for M102 */
   double   stepsPerFullRotation;   /* initially set to 400 */
   double   subSteps;               /* could be 1, 2, 4, 8, 16, 32 */
   int8_t   stepUnit;               /* could be: step, degree, radian */
@@ -401,7 +400,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
                                               &cmd_30_, &cmd_31_, &cmd_32_,
-                                              &cmd_33_
+											  &cmd_33_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -2608,12 +2607,12 @@ void IICwrite(uint8_t addr, uint8_t* data, uint8_t numDat){
   uint8_t i = 0;
 
   IICstart();
-  if(IICgetStatus() != TW_START){
+  if(IICgetStatus() !=  TW_START){
     /* error handling */
   }
 
   IICsendByte(addr | TW_WRITE);
-  if(IICgetStatus() != TW_MT_SLA_ACK){
+  if(IICgetStatus() !=  TW_MT_SLA_ACK){
     /* error handling */
   }
 
@@ -2778,42 +2777,35 @@ uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg){
 
   uint8_t val = 0;
 
-
   ATOMIC_BLOCK(ATOMIC_FORCEON){
     IICstart();
     if(IICgetStatus() != TW_START){
       /* error handling */
-      sendText("r no sta");
     }
 
     IICsendByte(addr | TW_WRITE);
-    if(IICgetStatus() !=  TW_MT_SLA_ACK){
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
       /* error handling */
-      sendText("r no addr ack");
     }
 
     IICsendByte(reg);
-    if(IICgetStatus() !=  TW_MT_DATA_ACK){
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
       /* error handling */
-      sendText("r no reg ack");
     }
 
     IICstart();
-    if(IICgetStatus() != TW_REP_START){
+    if(IICgetStatus() != TW_START){
       /* error handling */
-      sendText("r no rsta ack");
     }
 
     IICsendByte(addr | TW_READ);
     if(IICgetStatus() !=  TW_MR_SLA_ACK){
       /* error handling */
-      sendText("r no addr rd ack");
     }
 
     val = IICreadNACK();
     if(IICgetStatus() !=  TW_MR_DATA_NACK){
       /* error handling */
-      sendText("r no nack");
     }
 
     IICstop();
@@ -3112,8 +3104,6 @@ float getMotorCurrent(uint8_t mot){
  --------------------------------------------------------------------- */
 void initManualOperatingButtons(void){
 
-  uint8_t tmp;
-
   /* only for rotary encoder + its button */
   PORTC |= (1<<PC5)|(1<<PC4)|(1<<PC3);   /* set internal pull-ups */
 
@@ -3123,23 +3113,19 @@ void initManualOperatingButtons(void){
    *
    */
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON, 0x22);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
-  //writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xF8);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x03);
-  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0xF8);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0x00);
   writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
   
   //read GPIO register to clear the interrupt
   uint8_t tmp = 0;
   tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
 
-
   /* activate interrupt on INT0 (PD2) */
-  //EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
-  EICRA |= (1<<ISC01);  /* falling edge causes interrupt */
-  //EICRA |= (1<<ISC00);  /* any edge causes interrupt */
+  EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
   EIMSK |= (1<<INT0);   /* enable interrupt pin INT0 */
 
   /* set up a timer for button/rotary_encoder polling
@@ -4065,7 +4051,6 @@ ISR(TIMER0_COMPA_vect){
 ISR(INT0_vect){
    
   //sendText("INT0");
-  _delay_us(200);	//without delay a button press causes reset!
   
   uint8_t regVal = 0;
   
@@ -4254,24 +4239,22 @@ int main(void){
 
   /* OLED setup */
   OLEDinit(OLED_V2);
-  _delay_ms(1500);
+  _delay_ms(500);
   OLEDclear();
   OLEDsetCursor(0, 0);
 
 RESET:
-
   initDataStructs();  /* must be the first function after reset! */
   initBuffers();
-  initUSART();
   //initADC();
   initIIC();
   initMotorDelayTimer();
   initManualOperatingButtons();
-
+  initUSART();
 
   /* TODO: detect motors if connected */
 
-  //loadConfigFromEEPROM();
+  loadConfigFromEEPROM();
 
   /* turn on all available motors */
   //for(i = 0; i <= MAX_MOTOR; i++){
