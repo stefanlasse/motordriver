@@ -18,15 +18,15 @@
  * Pinout for LCD
  *
  */
-#define LCD_PORT      PORTD
-#define LCD_DDR       DDRD
-#define LCD_DB        PD4   /* lowest used pin */
+#define LCD_PORT      PORTB
+#define LCD_DDR       DDRB
+#define LCD_DB        PB4   /* lowest used pin */
 
 /* used reset pin */
-#define LCD_RS        PD2
+#define LCD_RS        PB1
 
 /* used enable pin */
-#define LCD_EN        PD3
+#define LCD_EN        PB3
 
 /* ---------------------------------------------------------------------
    wait times for the display

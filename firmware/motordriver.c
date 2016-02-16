@@ -1,27 +1,12 @@
 /* =====================================================================
 
-    Firmware for Motordriver
-
-    3. Physikalisches Institut, University of Stuttgart
+    Firmware for Motordriver / SMCx242
 
  ===================================================================== */
 
 /*
- *   Motordriver: 3. PI, Uni Stuttgart
- *   Copyright (C) 2014  Stefan Lasse
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *   Motordriver
+ *   Copyright (C) 2016 LK-Instruments
  */
 
 #define F_CPU 20000000UL /* in Hz */
@@ -32,20 +17,22 @@
 #include <avr/eeprom.h>
 #include <util/delay.h>
 #include <util/atomic.h>
+#include <util/twi.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
 
-#include "lcd-routines.h"
+//#include "lcd-routines.h"
+#include "characterOLED.h"
 
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION (" 1.4")
+#define FW_VERSION (" 1.5")
 
-#define IDN_STRING_LENGTH 20
+#define IDN_STRING_LENGTH 50
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
 #define NUMBER_OF_PARAMETERS 10         /* amount of parameters to be kept */
 #define PARAMETER_LENGTH 20
@@ -72,7 +59,7 @@
 #define MOTOR2              2
 #define MOTOR3              3
 #define DUMMY_MOTOR         4
-#define MAX_MOTOR           MOTOR3
+#define MAX_MOTOR           MOTOR3  //set to MOTOR1 for 2 or MOTOR3 for 4 channel version
 
 #define MOTOR_SENS0         PA0
 #define MOTOR_SENS1         PA1
@@ -82,12 +69,29 @@
 
 /* define the button pinout on AVR */
 #define NO_BUTTON           42  /* not allowed to be in intervall [0..7] */
-#define BUTTON_MOTOR0       PB7
-#define BUTTON_MOTOR1       PB6
-#define BUTTON_MOTOR2       PB5
-#define BUTTON_MOTOR3       PB4
-#define BUTTON_MENUESCAPE   PB3
-#define BUTTON_ROT_ENC      PB0
+#define BUTTON_MOTOR0       7
+#define BUTTON_MOTOR1       6
+#define BUTTON_MOTOR2       5
+#define BUTTON_MOTOR3       4
+#define BUTTON_MENUESCAPE   3
+#define BUTTON_ROT_ENC      3
+#define BUTTON_ROT_ENC_PRESS 8
+
+/* LED definitions for buttons */
+#define BUTT_LED_CHANNELS 48
+#define RED     2
+#define GREEN   1
+#define BLUE    0
+
+#define WS2803_CKI  PC7
+#define WS2803_SDI  PC6
+
+#define LED_MOT0    0
+#define LED_MOT1    1
+#define LED_MOT2    2
+#define LED_MOT3    3
+#define LED_MESC    4
+
 
 /* do not change ALL_BUTTONS */
 #define ALL_BUTTONS ((1<<BUTTON_MOTOR0)|     \
@@ -102,6 +106,86 @@
  --------------------------------------------------------------------- */
 #define SAVE_INTERNAL_PROGRAM_TO_EEPROM           1
 
+
+/* ---------------------------------------------------------------------
+    IIC address and config stuff
+ --------------------------------------------------------------------- */
+#define SCL_FREQ 400000
+#define TWBR_VALUE (((F_CPU/SCL_FREQ) - 16)/2)
+
+#define IIC_BUTTON_PORTEXP_ADDR     0x40
+
+#define IIC_MOTOR0_PORTEXP_ADDR     0x42
+#define IIC_MOTOR0_DAC_ADDR         0x12
+
+#define IIC_MOTOR1_PORTEXP_ADDR     0x44
+#define IIC_MOTOR1_DAC_ADDR         0x14
+
+#define IIC_MOTOR2_PORTEXP_ADDR     0x46
+#define IIC_MOTOR2_DAC_ADDR         0x9A
+
+#define IIC_MOTOR3_PORTEXP_ADDR     0x48
+#define IIC_MOTOR3_DAC_ADDR         0x9C
+
+#define EXT_EEPROM_ADDR             0xA0
+
+//#define R_SENS 0.2
+
+/* ---------------------------------------------------------------------
+    MCP23017 registers (for IOCON.BANK = 0 which is default)
+ --------------------------------------------------------------------- */
+#define IODIRA      0x00
+#define IODIRB      0x01
+#define IPOLA       0x02
+#define IPOLB       0x03
+#define GPINTENA    0x04
+#define GPINTENB    0x05
+#define DEFVALA     0x06
+#define DEFVALB     0x07
+#define INTCONA     0x08
+#define INTCONB     0x09
+#define IOCONA      0x0A
+#define GPPUA       0x0C
+#define GPPUB       0x0D
+#define INTFA       0x0E
+#define INTFB       0x0F
+#define INTCAPA     0x10
+#define INTCAPB     0x11
+#define GPIOA       0x12
+#define GPIOB       0x13
+#define OLATA       0x14
+#define OLATB       0x15
+
+/* ---------------------------------------------------------------------
+    MCP23008 registers
+ --------------------------------------------------------------------- */
+#define IODIR       0x00
+#define IPOL        0x01
+#define GPINTEN     0x02
+#define DEFVAL      0x03
+#define INTCON      0x04
+#define IOCON       0x05
+#define GPPU        0x06
+#define INTF        0x07
+#define INTCAP      0x08
+#define GPIO        0x09
+#define OLAT        0x0A
+
+/* ---------------------------------------------------------------------
+    bit assignment for DRV8825 <--> MCP23017
+ --------------------------------------------------------------------- */
+#define PORTEXP_MOTOR_ENABLE        3
+#define PORTEXP_MOTOR_DECAY         4
+#define PORTEXP_MOTOR_SLEEP         5
+#define PORTEXP_MOTOR_RESET         6
+
+#define PORTEXP_MOTOR_FAULT         0
+#define PORTEXP_MOTOR_HOME          1
+#define PORTEXP_MOTOR_SENSA         4
+#define PORTEXP_MOTOR_SENSB         3
+#define PORTEXP_MOTOR_SENSC         2
+#define PORTEXP_MOTOR_MOTA          5
+#define PORTEXP_MOTOR_MOTB          6
 
 /* ---------------------------------------------------------------------
     data structures
@@ -124,6 +208,14 @@ typedef struct{
 
 }serialString;
 
+/* for IIC data handling */
+typedef struct{
+
+  uint8_t *data;
+  uint8_t operationInProgress;
+
+}iic;
+
 /* for motor information */
 #define MOTOR_STEP_UNIT_STEP      0
 #define MOTOR_STEP_UNIT_DEGREE    1
@@ -142,14 +234,15 @@ typedef struct{
   uint8_t  isMoving;
   uint8_t  isTurnedOn;
   uint8_t  isMovingInfinite;
-  double   gearRatio;              /* initially set to 60:18 */
+  double   gearRatio;              /* initially set to 60:18 for old motors, 60:20 for M101 and 1:1 for M102 */
   double   stepsPerFullRotation;   /* initially set to 400 */
-  double   subSteps;               /* could be 1, 2, 4, 8, 16 */
+  double   subSteps;               /* could be 1, 2, 4, 8, 16, 32 */
   int8_t   stepUnit;               /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
+  double   current;                /* in ampere */
 
 }motorInfo;
 
@@ -175,17 +268,22 @@ typedef struct{
 #define CW_MOVE     1
 #define CCW_MOVE   -1
 
-#define PHASE_A  (PINB & 1<<PB1)
-#define PHASE_B  (PINB & 1<<PB2)
+#define PHASE_A  (PINC & 1<<PC5)
+#define PHASE_B  (PINC & 1<<PC4)
 #define DYNAMICS 40
 
-const int16_t table[16] PROGMEM = {0,0,-1,0,0,0,0,1,1,0,0,0,0,-1,0,0};
+
+//const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,0,1,0,0, 0,0,0,0,0};
+const int16_t table[16] PROGMEM = {0,0,-1,0, 0,0,0,1,1,0,0, 0,0,-1,0,0};
+//const int16_t table[16] PROGMEM = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};
 
 typedef struct{
 
   int8_t direction;
   int8_t steps;
   uint8_t readyToProcess;
+  uint8_t buttonPressed;
+  uint8_t buttonDebounce;
 
 }rotaryEncoder;
 
@@ -209,6 +307,8 @@ typedef struct{
   uint8_t absRel;
 
 }progStep;
+
+
 
 
 /* ---------------------------------------------------------------------
@@ -282,9 +382,12 @@ ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden 
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manual operation */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
+ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
 
+ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
+ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
 
-#define TOTAL_NUMBER_OF_COMMANDS 31
+#define TOTAL_NUMBER_OF_COMMANDS 34
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -296,7 +399,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
-                                              &cmd_30_
+                                              &cmd_30_, &cmd_31_, &cmd_32_,
+											  &cmd_33_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -339,7 +443,7 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "Motor Driver\n \0"               )
+ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0")
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
 ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
 ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
@@ -351,8 +455,9 @@ ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
 ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
 ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
 ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
+ADD_DISPLAY_TEXT(12, "Change motor\ncurrent\0"         )
 
-#define NUMBER_OF_DISPLAY_MENUS 12
+#define NUMBER_OF_DISPLAY_MENUS 13
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -366,13 +471,15 @@ ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
 #define MENU_OPTICAL_ZERO_POS       9
 #define MENU_CONST_ANGULAR_SPEED    10
 #define MENU_RUN_PROGRAM            11
+#define MENU_CHANGE_CURR            12
 
 
 /* to hold a list of menu entries */
 const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
-                                            &disp_9_,  &disp_10_, &disp_11_
+                                            &disp_9_,  &disp_10_, &disp_11_,
+											&disp_12_
                                            };
 
 /* to keep information where we are in the menu */
@@ -417,11 +524,13 @@ volatile serialString rxString;         /* for a received command */
 volatile serialString txString;         /* for information to send */
 volatile serialString commandString;
 volatile statusVariables status;        /* status variables */
+volatile iic IIC;                       /* hold IIC data */
 volatile analog adc;                    /* ADC information */
 volatile menuInfo menu;                 /* information about the menu */
 volatile button buttonState;            /* information on the user interface */
 volatile rotaryEncoder rotEnc;
 volatile progStep programList[MAX_PROGRAM_STEPS];  /* get memory for internal program */
+volatile uint8_t buttLedData[BUTT_LED_CHANNELS];
 
 
 /* ---------------------------------------------------------------------
@@ -437,6 +546,7 @@ double   EEMEM gearRatioEE[MAX_MOTOR+1];
 double   EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
 double   EEMEM subStepsEE[MAX_MOTOR+1];
 double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
+double   EEMEM currentEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
@@ -450,7 +560,7 @@ progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 /* initializer */
 void initDataStructs(void);
 void initUSART(void);
-void initADC(void);
+//void initADC(void);
 void initMotorDelayTimer(void);
 
 /* functionality */
@@ -459,7 +569,7 @@ void sendText(char *c);
 void prepareReset();
 void setMotorState(uint8_t motor, uint8_t status);
 void moveMotorRelative(uint8_t mot, int16_t steps);
-void defineOpticalZeroPosition(uint8_t i, int8_t step);
+void defineOpticalZeroPosition(uint8_t i, int16_t step);
 void motorZeroRun(uint8_t i);
 uint16_t getADCvalue(uint8_t sensPin);
 void saveConfigToEEPROM(void);
@@ -486,6 +596,8 @@ void updateDisplay(void);
 void changeDisplayMenu(uint8_t i);
 void updateDisplayChangeValues(uint8_t thisMenu);
 void updateMenu(void);
+
+
 
 void initManualOperatingButtons(void);
 uint8_t getButtonEvent(void);
@@ -518,6 +630,11 @@ void commandGetMotorState(char* param0);
 void commandDebugReadout(void);
 
 
+uint8_t reverseBitOrder(uint8_t b);
+
+uint8_t getMotorSens(uint8_t mot, uint8_t sens);
+
+
 /* =====================================================================
     initialization functions
 ====================================================================== */
@@ -545,6 +662,7 @@ void initDataStructs(void){
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
+	motor[i].current              = 1.0;
   }
 
   rxString.charCount = 0;
@@ -575,6 +693,10 @@ void initDataStructs(void){
   rotEnc.direction = NO_MOVE;
   rotEnc.steps = 0;
   rotEnc.readyToProcess = 0;
+  rotEnc.buttonPressed = 0;
+  rotEnc.buttonDebounce = 0;
+
+  IIC.operationInProgress = 0;
 
   for(i = 0; i <= MAX_MOTOR; i++){
     forbiddenZone[i].active = 0;
@@ -623,22 +745,24 @@ void initUSART(void){
 /* ---------------------------------------------------------------------
    inits the ADC
  --------------------------------------------------------------------- */
+ /*
 void initADC(void){
 
-  ADMUX   = (1<<REFS0);  /* AVcc voltage reference */
+  ADMUX   = (1<<REFS0);  // AVcc voltage reference
   ADCSRA  = (1<<ADEN)|(1<<ADPS1)|(1<<ADPS0);
 
-  /* start one conversion for initializing */
+  // start one conversion for initializing
   ADCSRA  |= (1<<ADSC);
 
   while(ADCSRA & (1<<ADSC)){
     ;
   }
 
-  (void)ADCW;
+  (void)ADCW; // dummy read out
 
   return;
 }
+*/
 
 /* ---------------------------------------------------------------------
    initialize buffers
@@ -670,8 +794,6 @@ void initBuffers(void){
 
   return;
 }
-
-
 
 /* =====================================================================
     functionality implementation
@@ -728,33 +850,9 @@ void prepareReset(){
   return;
 }
 
-/* ---------------------------------------------------------------------
-    setMotorState: turns motor on/off
- --------------------------------------------------------------------- */
-void setMotorState(uint8_t mot, uint8_t state){
-
-  /* set enable bit as output */
-  DDRA |= (1 << (mot + 4));
-
-  if(state == ON){
-    PORTA &= ~(1 << (mot + 4));   /* delete pull-up */
-    motor[mot].isTurnedOn = ON;
-    DDRC |= (1 << mot);           /* moving direction pin */
-    DDRC |= (1 << (mot + 4));     /* stepping pin */
-  }
-  else{
-    PORTA |= (1 << (mot + 4));
-    motor[mot].isTurnedOn = OFF;
-    DDRC &= ~(1 << mot);          /* moving direction pin */
-    DDRC &= ~(1 << (mot + 4));    /* stepping pin */
-  }
-
-  return;
-}
-
 
 /* ---------------------------------------------------------------------
-    inits the motor timer for motor[i].waitBetweenSteps
+    initializes the motor timer for motor[i].waitBetweenSteps
  --------------------------------------------------------------------- */
 void initMotorDelayTimer(void){
 
@@ -791,18 +889,18 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
   }
   else if(steps < 0){
     /* move CCW */
-    PORTC |= (1 << (2*mot + 1));
+    PORTA |= (1 << (2*mot + 1));
   }
   else{
     /* move CW */
-    PORTC &= ~(1 << (2*mot + 1));
+    PORTA &= ~(1 << (2*mot + 1));
   }
 
   /* now move the motor */
   for (i = 0; i < abs(steps); i++){
-    PORTC |= (1 << (2*mot));
+    PORTA |= (1 << (2*mot));
     _delay_us(2); /* as specified in datasheet */
-    PORTC &= ~(1 << (2*mot));
+    PORTA &= ~(1 << (2*mot));
 
     for(j = 0; j < motor[mot].waitBetweenSteps; j++){
       _delay_ms(1);
@@ -815,7 +913,7 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
 /* ---------------------------------------------------------------------
    setting the optical zero position
  --------------------------------------------------------------------- */
-void defineOpticalZeroPosition(uint8_t i, int8_t step){
+void defineOpticalZeroPosition(uint8_t i, int16_t step){
 
   motor[i].desiredPosition = motor[i].actualPosition + step;
   motor[i].opticalZeroPosition = motor[i].desiredPosition;
@@ -856,14 +954,16 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 1;    /* set 1 ms for fast moving */
 
   /* in case we are at any possible zero position: move out */
-  while(getADCvalue(i) < thres){
+  //while(getADCvalue(i) < thres){
+  while(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, -200);
   }
 
   /* start first search for zero point */
   for(j = 0; j < (uint16_t)round(stepsPerRound); j++){
     moveMotorRelative(i, 1);
-    if(getADCvalue(i) < thres){
+    //if(getADCvalue(i) < thres){
+	if(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
       /* we found a zero position */
       break;
     }
@@ -886,7 +986,8 @@ void motorZeroRun(uint8_t i){
   motor[i].waitBetweenSteps = 5;
 
   /* and move till the threshold is reached */
-  while(getADCvalue(i) > thres){
+  //while(getADCvalue(i) > thres){
+  while(!getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, 1);
   }
   /* and here we found our magnetic zero position :-) */
@@ -899,6 +1000,8 @@ void motorZeroRun(uint8_t i){
   /* now set motor into a defined state */
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
+
+  resetMotorLogic(i);
 
   /* allow motor movements again */
   initMotorDelayTimer();
@@ -915,13 +1018,13 @@ uint16_t getADCvalue(uint8_t sensPin){
   uint8_t i = 0;
   uint8_t lowByte, highByte;
 
-  /* select channel */
+  // select channel
   ADMUX = (ADMUX & ~(0x1F)) | (sensPin & 0x1F);
 
-  /* reset all values and counters before starting new conversion */
+  // reset all values and counters before starting new conversion
   adc.ADCvalue = 0;
 
-  /* start the conversion */
+  // start the conversion
   for(i = 0; i < adc.numberOfMeasurements; i++){
     ADCSRA |= (1<<ADSC);
     while(ADCSRA & (1<<ADSC)){
@@ -949,6 +1052,7 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_update_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -982,6 +1086,7 @@ void loadConfigFromEEPROM(void){
       eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
+	  eeprom_read_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -1006,6 +1111,9 @@ void loadConfigFromEEPROM(void){
   return;
 }
 
+
+
+
 /* =====================================================================
     Display subsystem
 
@@ -1018,21 +1126,403 @@ void loadConfigFromEEPROM(void){
   - driven in 4-bit-mode
 ====================================================================== */
 
+
+/* ---------------------------------------------------------------------
+    initialize OLED display
+ --------------------------------------------------------------------- */
+void OLEDinit(uint8_t ver){
+
+  _oled_ver = ver;
+  if(_oled_ver != OLED_V1 && _oled_ver != OLED_V2){
+    _oled_ver = OLED_V2; // if error, default to newer version
+  }
+
+  _data_pins[0] = data4;
+  _data_pins[1] = data5;
+  _data_pins[2] = data6;
+  _data_pins[3] = data7;
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  _displayfunction = LCD_FUNCTIONSET | LCD_4BITMODE;
+
+  OLEDbegin(16, 2);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDpinMode(uint8_t pin, uint8_t mode){
+
+  if (mode) {
+    LCD_DDR |= (1 << pin);
+  } //output
+  else {
+    LCD_DDR &= ~(1 << pin);
+  } //input
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDdigitalWrite(uint8_t pin,uint8_t value){
+
+  if (value == LOW) {
+    LCD_PORT &= ~(1 << pin);
+  } //If low, write 0
+  else {
+    LCD_PORT |= (1 << pin);
+  } //if high, write 1
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+uint8_t OLEDdigitalRead(uint8_t pin){
+
+  return (LCD_PIN & (1 << pin));
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDbegin(uint8_t cols, uint8_t lines){
+
+  _numlines = lines;
+  _currline = 0;
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_enable_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  _delay_us(50000); // give it some time to power up
+
+  // Now we pull both RS and R/W low to begin commands
+  for(int i = 0; i < 4; i++){
+    OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], LOW);
+  }
+
+  // Initialization sequence is not quite as documented by Winstar.
+  // Documented sequence only works on initial power-up.
+  // An additional step of putting back into 8-bit mode first is
+  // required to handle a warm-restart.
+  //
+  // In the data sheet, the timing specs are all zeros(!).  These have been tested to
+  // reliably handle both warm & cold starts.
+
+  // 4-Bit initialization sequence from Technobly
+  OLEDwrite4bits(0x03); // Put back into 8-bit mode
+  _delay_us(5000);
+  if(_oled_ver == OLED_V2){  // only run extra command for newer displays
+    OLEDwrite4bits(0x08);
+    _delay_us(5000);
+  }
+
+  OLEDwrite4bits(0x02); // Put into 4-bit mode
+  _delay_us(5000);
+  OLEDwrite4bits(0x02);
+  _delay_us(5000);
+  OLEDwrite4bits(0x08);
+  _delay_us(5000);
+
+  OLEDcommand(0x08);  // Turn Off
+  _delay_us(5000);
+  OLEDcommand(0x01);  // Clear Display
+  _delay_us(5000);
+  OLEDcommand(0x06);  // Set Entry Mode
+  _delay_us(5000);
+  OLEDcommand(0x02);  // Home Cursor
+  _delay_us(5000);
+  OLEDcommand(0x0C);  // Turn On - enable cursor & blink
+  _delay_us(5000);
+}
+
+/* ---------------------------------------------------------------------
+    clear display
+ --------------------------------------------------------------------- */
+void OLEDclear(void){
+
+  OLEDcommand(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
+}
+
+/* ---------------------------------------------------------------------
+    set cursor to home position
+ --------------------------------------------------------------------- */
+void OLEDhome(void){
+  OLEDcommand(LCD_RETURNHOME);  // set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
+}
+
+/* ---------------------------------------------------------------------
+    set cursor to x-y-position (home = 0,0)
+ --------------------------------------------------------------------- */
+void OLEDsetCursor(uint8_t col, uint8_t row){
+
+  uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
+  if (row >= _numlines){
+    row = 0;  //write to first line if out off bounds
+  }
+
+  OLEDcommand(LCD_SETDDRAMADDR | (col + row_offsets[row]));
+}
+
+/* ---------------------------------------------------------------------
+    Turn the display on/off (quickly)
+ --------------------------------------------------------------------- */
+void OLEDnoDisplay(void){
+
+  _displaycontrol &= ~LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDdisplay(){
+
+  _displaycontrol |= LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    Turns the underline cursor off
+ --------------------------------------------------------------------- */
+void OLEDnoCursor(void){
+
+  _displaycontrol &= ~LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    Turns the underline cursor on
+ --------------------------------------------------------------------- */
+void OLEDcursor(){
+
+  _displaycontrol |= LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    Turn off the blinking cursor
+ --------------------------------------------------------------------- */
+void OLEDnoBlink(void){
+
+  _displaycontrol &= ~LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    Turn on the blinking cursor
+ --------------------------------------------------------------------- */
+void OLEDblink(void){
+
+  _displaycontrol |= LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
+}
+
+/* ---------------------------------------------------------------------
+    These commands scroll the display without changing the RAM
+ --------------------------------------------------------------------- */
+void OLEDscrollDisplayLeft(void){
+
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDscrollDisplayRight(void){
+
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
+}
+
+/* ---------------------------------------------------------------------
+    This is for text that flows Left to Right
+ --------------------------------------------------------------------- */
+void OLEDleftToRight(void){
+
+  _displaymode |= LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    This is for text that flows Right to Left
+ --------------------------------------------------------------------- */
+void OLEDrightToLeft(void){
+
+  _displaymode &= ~LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    This will 'right justify' text from the cursor
+ --------------------------------------------------------------------- */
+void OLEDautoscroll(void){
+
+  _displaymode |= LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    This will 'left justify' text from the cursor
+ --------------------------------------------------------------------- */
+void OLEDnoAutoscroll(void){
+
+  _displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
+}
+
+/* ---------------------------------------------------------------------
+    Allows us to fill the first 8 CGRAM locations
+    with custom characters
+ --------------------------------------------------------------------- */
+void OLEDcreateChar(uint8_t location, uint8_t charmap[]){
+
+  location &= 0x7; // we only have 8 locations 0-7
+  OLEDcommand(LCD_SETCGRAMADDR | (location << 3));
+  for (int i=0; i<8; i++){
+    OLEDwriteC(charmap[i]);
+  }
+}
+
+/* ---------------------------------------------------------------------
+    send a command to the display
+ --------------------------------------------------------------------- */
+inline void OLEDcommand(uint8_t value){
+
+  OLEDsend(value, LOW);
+  OLEDwaitForReady();
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+inline size_t OLEDwriteC(uint8_t value){
+
+  OLEDsend(value, HIGH);
+  OLEDwaitForReady();
+}
+
+/* ---------------------------------------------------------------------
+    write either command or data
+ --------------------------------------------------------------------- */
+void OLEDsend(uint8_t value, uint8_t mode){
+
+  OLEDdigitalWrite(rs_pin, mode);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  OLEDwrite4bits(value >> 4);
+  OLEDwrite4bits(value);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDpulseEnable(void){
+
+  OLEDdigitalWrite(_enable_pin, HIGH);
+  _delay_us(50);    // TODO: Timing Spec?
+  OLEDdigitalWrite(_enable_pin, LOW);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDwrite4bits(uint8_t value){
+
+  for(int i = 0; i < 4; i++){
+    OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], (value >> i) & 0x01);
+  }
+
+  _delay_us(50); // Timing spec?
+  OLEDpulseEnable();
+}
+
+/* ---------------------------------------------------------------------
+    Poll the busy bit until it goes LOW
+ --------------------------------------------------------------------- */
+void OLEDwaitForReady(void){
+
+  unsigned char busy = 1;
+  OLEDpinMode(_busy_pin, INPUT);
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, HIGH);
+
+  do{
+    OLEDdigitalWrite(_enable_pin, LOW);
+    OLEDdigitalWrite(_enable_pin, HIGH);
+
+    _delay_us(10);
+    busy = OLEDdigitalRead(_busy_pin);
+    OLEDdigitalWrite(_enable_pin, LOW);
+
+    OLEDpulseEnable();    // get remaining 4 bits, which are not used.
+  } while(busy);
+
+  OLEDpinMode(_busy_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+size_t OLEDprintCC(const char str[]){
+
+  return OLEDwriteCC(str);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+size_t OLEDprintC(char c){
+
+  return OLEDwriteC(c);
+}
+
+/* ---------------------------------------------------------------------
+    send a string with length to the display
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCCC(const uint8_t *buffer, size_t size){
+
+  size_t n = 0;
+  while(size--){
+    n += OLEDwriteC(*buffer++);
+  }
+
+  return n;
+}
+
+/* ---------------------------------------------------------------------
+    send a string to the display
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCC(const char *str){
+
+  if(str == NULL){
+    return 0;
+  }
+
+  return OLEDwriteCCC((const uint8_t *)str, strlen(str));
+}
+
+
+
+#if 0
+
 /* Interface to a HD44780 compatible LCD in 4-Bit-mode
  * http://www.mikrocontroller.net/articles/HD44780
  * http://www.mikrocontroller.net/articles/AVR-GCC-Tutorial/LCD-Ansteuerung
  *
  * Pinout is defined in lcd-routines.h
- *
- *
- * Connection from AVR to Display:
- *
- * AVR PD2 --> Display RS (reset)
- * AVR PD3 --> Display EN (enable)
- * AVR PD4 --> Display D4
- * AVR PD5 --> Display D5
- * AVR PD6 --> Display D6
- * AVR PD7 --> Display D7
  *
  */
 
@@ -1229,6 +1719,70 @@ void lcd_generatechar(uint8_t code, const uint8_t *data){
   return;
 }
 
+
+#endif
+
+/* ---------------------------------------------------------------------
+   change button LED color/intensity
+ --------------------------------------------------------------------- */
+void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
+  
+  uint8_t chan = 0;
+  
+  switch(butt) {
+	case 0: chan = 6*2+color; break;
+	case 1: chan = 6*1+color; break;
+	case 2: chan = 6*0+color; break;
+	case 3: chan = 6*5+color; break;
+	case 4: chan = 6*4+color; break;
+	default: chan = 0; break;
+  }
+
+  buttLedData[chan]   = intensity;
+  buttLedData[chan+3] = intensity;
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   update LEDs
+ --------------------------------------------------------------------- */
+void updateLEDs(void){
+  
+  uint16_t i = 0;
+  uint8_t  j = 0;
+  uint8_t data = 0;
+  uint8_t outbyte = 0;
+
+  for(i = BUTT_LED_CHANNELS - 1; i < 255; i--){
+	data = buttLedData[i];
+	for(uint8_t i=7; i<255; i--)
+    {
+        outbyte = (data>>i) & 0x01;
+        // Set the data pin to given value, and clk pin to 0
+        if(outbyte)
+        {
+            PORTC |= (outbyte << WS2803_SDI);
+        }
+        else
+        {
+            PORTC &= ~(outbyte << WS2803_SDI);
+        }
+        PORTC &= ~(1 << WS2803_CKI);
+        _delay_us(10);
+
+        // Keep the data pin, and set clk pin to 1 (strobe)
+        PORTC |= 1 << WS2803_CKI;
+        _delay_us(10);
+
+        // Zero both clk and data pins
+        PORTC &= ~((1 << WS2803_SDI) | (1 << WS2803_CKI));
+    }
+  }
+
+  return;
+}
+
 /* ---------------------------------------------------------------------
    set desired motor position if unit is degree
  --------------------------------------------------------------------- */
@@ -1266,7 +1820,6 @@ double stepsToDegree(uint8_t mot, int16_t steps){
                                 *motor[mot].stepsPerFullRotation) );
 
   return radian;
-
 }
 
 /* ---------------------------------------------------------------------
@@ -1353,11 +1906,15 @@ void updateDisplay(void){
     case MENU_SCROLL_MODE:
       if(menu.currentDisplayedMenu != menu.newDisplayedMenu){
         changeDisplayMenu(menu.newDisplayedMenu);
-        lcd_setcursor(0, 1);  /* line 1 */
-        lcd_string(menu.newMenuText[0]);
+        //lcd_setcursor(0, 1);  /* line 1 */
+        //lcd_string(menu.newMenuText[0]);
+        OLEDsetCursor(0, 0);
+        OLEDprintCC(menu.newMenuText[0]);
         strcpy(menu.currentMenuText[0], menu.newMenuText[0]);
-        lcd_setcursor(0, 2);  /* line 2 */
-        lcd_string(menu.newMenuText[1]);
+        //lcd_setcursor(0, 2);  /* line 2 */
+        //lcd_string(menu.newMenuText[1]);
+        OLEDsetCursor(0, 1);
+        OLEDprintCC(menu.newMenuText[1]);
         strcpy(menu.currentMenuText[1], menu.newMenuText[1]);
         menu.currentDisplayedMenu = menu.newDisplayedMenu;
         for(j = 0; j <= NUMBER_DISPLAY_VALUE_STRINGS; j++){
@@ -1370,23 +1927,31 @@ void updateDisplay(void){
     case MENU_VALUE_CHANGE:
       updateDisplayChangeValues(menu.currentDisplayedMenu);
       if(strcmp(menu.currentDisplayValue[0], menu.newDisplayValue[0])){
-        lcd_setcursor(0, 1);
-        lcd_string(menu.newDisplayValue[0]);
+        //lcd_setcursor(0, 1);
+        //lcd_string(menu.newDisplayValue[0]);
+        OLEDsetCursor(0, 0);
+        OLEDprintCC(menu.newDisplayValue[0]);
         strcpy(menu.currentDisplayValue[0], menu.newDisplayValue[0]);
       }
       if(strcmp(menu.currentDisplayValue[1], menu.newDisplayValue[1])){
-        lcd_setcursor(8, 1);
-        lcd_string(menu.newDisplayValue[1]);
+        //lcd_setcursor(8, 1);
+        //lcd_string(menu.newDisplayValue[1]);
+        OLEDsetCursor(8, 0);
+        OLEDprintCC(menu.newDisplayValue[1]);
         strcpy(menu.currentDisplayValue[1], menu.newDisplayValue[1]);
       }
       if(strcmp(menu.currentDisplayValue[2], menu.newDisplayValue[2])){
-        lcd_setcursor(0, 2);
-        lcd_string(menu.newDisplayValue[2]);
+        //lcd_setcursor(0, 2);
+        //lcd_string(menu.newDisplayValue[2]);
+        OLEDsetCursor(0, 1);
+        OLEDprintCC(menu.newDisplayValue[2]);
         strcpy(menu.currentDisplayValue[2], menu.newDisplayValue[2]);
       }
       if(strcmp(menu.currentDisplayValue[3], menu.newDisplayValue[3])){
-        lcd_setcursor(8, 2);
-        lcd_string(menu.newDisplayValue[3]);
+        //lcd_setcursor(8, 2);
+        //lcd_string(menu.newDisplayValue[3]);
+        OLEDsetCursor(8, 1);
+        OLEDprintCC(menu.newDisplayValue[3]);
         strcpy(menu.currentDisplayValue[3], menu.newDisplayValue[3]);
       }
       break;
@@ -1454,8 +2019,8 @@ void updateDisplayChangeValues(uint8_t thisMenu){
   /* load the values of all 4 motors */
   switch(state){
     case MENU_MAIN:   /* main menu point, no values here to change */
-      sprintf(menu.newDisplayValue[0], "3.PI  Un");
-      sprintf(menu.newDisplayValue[1], "i Stutt.");
+      sprintf(menu.newDisplayValue[0], "SMCx242 ");
+      sprintf(menu.newDisplayValue[1], "        ");
       sprintf(menu.newDisplayValue[2], "Firmware");
       sprintf(menu.newDisplayValue[3], FW_VERSION);
       break;
@@ -1593,6 +2158,13 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       sprintf(menu.newDisplayValue[2], "Step %d" , menu.currentProgramStep);
       sprintf(menu.newDisplayValue[3], "        ");
       break;
+	  
+	case MENU_CHANGE_CURR:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        sprintf(menu.newDisplayValue[i], "%c%.1f A", c, motor[i].current);
+      }
+      break;
 
     default:  /* in case of fire ;-) */
       break;
@@ -1626,6 +2198,7 @@ void updateMenu(void){
   menuItem *menuPtr;
 
   uint8_t i = 0;
+  uint8_t tmp = 0;
 
   /* first check if we have something to change at all */
   if(buttonState.readyToProcess == 0 && rotEnc.readyToProcess == 0){
@@ -1649,10 +2222,10 @@ void updateMenu(void){
     menu.newDisplayedMenu = (uint8_t)menuPrompt;
 
     /* or enter the MENU_CHANGE_MODE */
-    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor == 0){
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor == 0){
       menu.newMenuMode = MENU_CHANGE_MODE;
     }
-    if(getButtonEvent() == BUTTON_ROT_ENC && menu.selectedMotor != 0){
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor != 0){
       menu.newMenuMode = MENU_VALUE_CHANGE;
     }
   }
@@ -1684,7 +2257,7 @@ void updateMenu(void){
         menu.newMenuMode = MENU_VALUE_CHANGE;
         break;
 
-      case BUTTON_ROT_ENC:
+      case BUTTON_ROT_ENC_PRESS:
         menu.fastMovingMode ^= 1;
         break;
 
@@ -1797,32 +2370,42 @@ void updateMenu(void){
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
-              if(rotEncVal > 0){
-                motor[i].subSteps *= 2.0;
+              tmp = motor[i].subSteps;
+			  if(rotEncVal > 0){
+                //motor[i].subSteps *= 2.0;
+				tmp *= 2.0;
               }
               if(rotEncVal < 0){
-                motor[i].subSteps /= 2.0;
+                //motor[i].subSteps /= 2.0;
+				tmp /= 2.0;
               }
               if(motor[i].subSteps < 1){
-                motor[i].subSteps = 1;
+                //motor[i].subSteps = 1;
+				tmp = 1;
               }
               if(motor[i].subSteps > 32){
-                motor[i].subSteps = 32;
+                //motor[i].subSteps = 32;
+				tmp = 32;
               }
+			  setSubSteps(i,tmp);
             }
           }
           break;
 
         case MENU_SAVE_CONFIG:   /* save current configuration */
           saveConfigToEEPROM();
-          lcd_clear();
-          lcd_string("saved");
+          //lcd_clear();
+          //lcd_string("saved");
+          OLEDclear();
+          OLEDprintCC("saved");
           break;
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
-          lcd_clear();
-          lcd_string("loaded");
+          //lcd_clear();
+          //lcd_string("loaded");
+          OLEDclear();
+          OLEDprintCC("loaded");
           break;
 
         case MENU_OPTICAL_ZERO_POS: /* define the optical zero position */
@@ -1894,6 +2477,22 @@ void updateMenu(void){
             ;
           }
           break;
+		  
+		case MENU_CHANGE_CURR:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].current += (rotEncVal)/10.0;
+			  if(motor[i].current < 0){
+                motor[i].current = 0;
+              }
+              if(motor[i].current > 2.5){
+                motor[i].current = 2.5;
+              }
+			  setMotorCurrent(i, motor[i].current);
+            }
+          }
+		  
+          break;
 
         default:  /* in case of fire ;-) */
           break;
@@ -1903,12 +2502,598 @@ void updateMenu(void){
 
   buttonState.readyToProcess = 0;
   rotEnc.readyToProcess = 0;
+  rotEnc.buttonPressed = 0;
 
   return;
 }
 
 
+/* =====================================================================
+    I2C subsystem
 
+  code to communicate with I2C devices @ 400 kHz SCL
+
+  For F_CPU = 20 MHz:
+  TWPS = 0   (always)
+  TWBR = 34  (400 kHz SCL)
+  TWBR = 184 (100 kHz SCL)
+
+====================================================================== */
+
+/* ---------------------------------------------------------------------
+   initialize I2C system
+ --------------------------------------------------------------------- */
+void initIIC(void){
+
+  TWBR = TWBR_VALUE;    /* see macro above */
+  TWSR &= ~((1<<TWPS0) | (1<<TWPS1));
+  TWCR = (1<<TWEN);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   send IIC start
+ --------------------------------------------------------------------- */
+void IICstart(void){
+
+  TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN);
+  while(!(TWCR & (1<<TWINT)));
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   send IIC stop
+ --------------------------------------------------------------------- */
+void IICstop(void){
+
+  TWCR = (1<<TWINT) | (1<<TWSTO) | (1<<TWEN);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   write a single byte to the bus
+ --------------------------------------------------------------------- */
+void IICsendByte(uint8_t data){
+
+  TWDR = data;
+  TWCR = (1<<TWINT) | (1<<TWEN);
+  while(!(TWCR & (1<<TWINT)));
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   read a single byte with ACK
+ --------------------------------------------------------------------- */
+uint8_t IICreadACK(void){
+
+  TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA);
+  while(!(TWCR & (1<<TWINT)));
+
+  return TWDR;
+}
+
+/* ---------------------------------------------------------------------
+   read a single byte with NACK
+ --------------------------------------------------------------------- */
+uint8_t IICreadNACK(void){
+
+  TWCR = (1<<TWINT) | (1<<TWEN);
+  while (!(TWCR & (1<<TWINT)));
+
+  return TWDR;
+}
+
+/* ---------------------------------------------------------------------
+   get IIC status register
+ --------------------------------------------------------------------- */
+uint8_t IICgetStatus(void){
+
+  uint8_t status = 0;
+
+  status = TWSR & 0xF8;
+
+  return status;
+}
+
+/* ---------------------------------------------------------------------
+   send a number of bytes to I2C slave
+ --------------------------------------------------------------------- */
+void IICwrite(uint8_t addr, uint8_t* data, uint8_t numDat){
+
+  uint8_t i = 0;
+
+  IICstart();
+  if(IICgetStatus() !=  TW_START){
+    /* error handling */
+  }
+
+  IICsendByte(addr | TW_WRITE);
+  if(IICgetStatus() !=  TW_MT_SLA_ACK){
+    /* error handling */
+  }
+
+  for(i = 0; i < numDat; i++){
+    IICsendByte(*data);
+    if(IICgetStatus() != TW_MT_DATA_ACK){
+      /* error handling */
+    }
+    data++;
+  }
+
+  IICstop();
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   read a number of bytes from an I2C slave
+ --------------------------------------------------------------------- */
+void IICread(uint8_t addr, uint8_t* data, uint8_t numDat){
+
+  uint8_t i = 0;
+
+  IICstart();
+  if(IICgetStatus() != TW_START){
+    /* error handling */
+  }
+
+  IICsendByte(addr | TW_READ);
+  if(IICgetStatus() !=  TW_MR_SLA_ACK){
+    /* error handling */
+  }
+
+  for(i=0; i < numDat - 1; i++){
+    *data = IICreadACK();
+    if(IICgetStatus() != TW_MR_DATA_ACK){
+      /* error handling */
+    }
+    data++;
+  }
+
+  *data = IICreadNACK();
+  if(IICgetStatus() !=  TW_MR_DATA_NACK){
+    /* error handling */
+  }
+
+  IICstop();
+
+  return;
+}
+
+
+/* =====================================================================
+    resolve I2C addresses
+====================================================================== */
+
+/* ---------------------------------------------------------------------
+   resolve Port Expander address
+ --------------------------------------------------------------------- */
+uint8_t getPortExpanderAddress(uint8_t mot){
+
+  uint8_t addr = 0;
+
+  switch(mot){
+    case MOTOR0:
+      addr = IIC_MOTOR0_PORTEXP_ADDR;
+      break;
+
+    case MOTOR1:
+      addr = IIC_MOTOR1_PORTEXP_ADDR;
+      break;
+
+    case MOTOR2:
+      addr = IIC_MOTOR2_PORTEXP_ADDR;
+      break;
+
+    case MOTOR3:
+      addr = IIC_MOTOR3_PORTEXP_ADDR;
+      break;
+
+    default:
+      addr = 0;
+  }
+
+  return addr;
+}
+
+/* ---------------------------------------------------------------------
+   resolve DAC address
+ --------------------------------------------------------------------- */
+uint8_t getDACAddress(uint8_t mot){
+
+  uint8_t addr = 0;
+
+  switch(mot){
+    case MOTOR0:
+      addr = IIC_MOTOR0_DAC_ADDR;
+      break;
+
+    case MOTOR1:
+      addr = IIC_MOTOR1_DAC_ADDR;
+      break;
+
+    case MOTOR2:
+      addr = IIC_MOTOR2_DAC_ADDR;
+      break;
+
+    case MOTOR3:
+      addr = IIC_MOTOR3_DAC_ADDR;
+      break;
+
+    default:
+      addr = 0;
+  }
+
+  return addr;
+}
+
+/* =====================================================================
+    Port expander subsystem
+
+    http://ww1.microchip.com/downloads/en/DeviceDoc/21952b.pdf
+====================================================================== */
+
+/* ---------------------------------------------------------------------
+   initialize I2C port expanders in byte mode
+ --------------------------------------------------------------------- */
+void initPortExpander(uint8_t addr){
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    /*  register addr  |  register value   |       send it        */
+    IIC.data[0] = IOCONA; IIC.data[1] = 0x20; IICwrite(addr, IIC.data, 2);
+
+    IIC.data[0] = IODIRA; IIC.data[1] = 0x00; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = IODIRB; IIC.data[1] = 0xFF; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = GPINTENB; IIC.data[1] = 0x1D; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = DEFVALB; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = INTCONB; IIC.data[1] = 0x03; IICwrite(addr, IIC.data, 2);
+    IIC.data[0] = GPIOA; IIC.data[1] = 0x78; IICwrite(addr, IIC.data, 2);
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   write port expander register
+ --------------------------------------------------------------------- */
+void writePortExpanderRegister(uint8_t addr, uint8_t reg, uint8_t val){
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    IIC.data[0] = reg; IIC.data[1] = val;
+    IICwrite(addr, IIC.data, 2);
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   read port expander register
+ --------------------------------------------------------------------- */
+uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg){
+
+  uint8_t val = 0;
+
+  ATOMIC_BLOCK(ATOMIC_FORCEON){
+    IICstart();
+    if(IICgetStatus() != TW_START){
+      /* error handling */
+    }
+
+    IICsendByte(addr | TW_WRITE);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
+    IICsendByte(reg);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
+    IICstart();
+    if(IICgetStatus() != TW_START){
+      /* error handling */
+    }
+
+    IICsendByte(addr | TW_READ);
+    if(IICgetStatus() !=  TW_MR_SLA_ACK){
+      /* error handling */
+    }
+
+    val = IICreadNACK();
+    if(IICgetStatus() !=  TW_MR_DATA_NACK){
+      /* error handling */
+    }
+
+    IICstop();
+  }
+
+  return val;
+}
+
+/* ---------------------------------------------------------------------
+   because of reversed bit order :'-(
+   ... shit happens
+ --------------------------------------------------------------------- */
+uint8_t reverseBitOrder(uint8_t b){
+
+  b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+  b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+  b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+
+  return b;
+}
+
+/* ---------------------------------------------------------------------
+   sets the desired motor substeps
+   function takes a value 1...32   
+ --------------------------------------------------------------------- */
+void setSubSteps(uint8_t mot, uint8_t steps){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+  
+  /*
+  if(steps > 5){
+    steps = 5;
+  }
+  */
+  
+  if(steps > 32){
+    steps = 32;
+  }
+  if(steps < 1){
+    steps = 1;
+  }
+  
+  //convert steps from 1...32 to 0...5
+  uint8_t tmp_steps = 0;
+  tmp_steps = steps;
+  steps = 0;
+  
+  while(tmp_steps != 1){
+    tmp_steps = tmp_steps >> 1;
+	steps++ ;
+  }
+  
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  regval &= 0xF8;
+
+  regval |= (reverseBitOrder(steps) & 0xE0) >> 5;
+  writePortExpanderRegister(addr, GPIOA, regval);
+  
+  motor[mot].subSteps = (1<<steps);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   reads out the desired motor substeps
+   TODO
+ --------------------------------------------------------------------- */
+uint8_t getSubSteps(uint8_t mot){
+
+  uint8_t steps = 0;
+
+  return steps;
+}
+
+/* ---------------------------------------------------------------------
+    setMotorState: turns motor on/off
+    nENBL: active low
+ --------------------------------------------------------------------- */
+void setMotorState(uint8_t mot, uint8_t state){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  if(state){
+    regval &= ~(1<<PORTEXP_MOTOR_ENABLE);
+  }
+  else{
+    regval |= (1<<PORTEXP_MOTOR_ENABLE);
+  }
+
+  writePortExpanderRegister(addr, GPIOA, regval);
+  motor[mot].isTurnedOn = state;
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     sets the motor decay (SLOW = 0, FAST = 1)
+ --------------------------------------------------------------------- */
+void setMotorDecay(uint8_t mot, uint8_t state){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  if(state){
+    regval &= ~(1<<PORTEXP_MOTOR_DECAY);
+  }
+  else{
+    regval |= (1<<PORTEXP_MOTOR_DECAY);
+  }
+
+  writePortExpanderRegister(addr, GPIOA, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     resets the internal motor logic (active LOW):
+     - step table
+     - home position
+     - disables H-bridges
+ --------------------------------------------------------------------- */
+void resetMotorLogic(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  regval &= ~(1<<PORTEXP_MOTOR_RESET);
+  writePortExpanderRegister(addr, GPIOA, regval);
+  regval |= (1<<PORTEXP_MOTOR_RESET);
+  writePortExpanderRegister(addr, GPIOA, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     send motor to bed (active LOW)
+ --------------------------------------------------------------------- */
+void setMotorSleep(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  regval &= ~(1<<PORTEXP_MOTOR_SLEEP);
+
+  writePortExpanderRegister(addr, GPIOA, regval);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     get motor out of bed
+ --------------------------------------------------------------------- */
+void wakeMotorUp(uint8_t mot){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOA);
+
+  regval |= (1<<PORTEXP_MOTOR_SLEEP);
+
+  writePortExpanderRegister(addr, GPIOA, regval);
+  _delay_ms(2);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+     read motor port expander input pin
+ --------------------------------------------------------------------- */
+uint8_t getMotorSens(uint8_t mot, uint8_t sens){
+
+  uint8_t addr = 0;
+  uint8_t regval = 0;
+  uint8_t state = 0;
+
+  addr = getPortExpanderAddress(mot);
+  regval = readPortExpanderRegister(addr, GPIOB);
+  
+  //sprintf(txString.buffer, "\nregval=%X", regval);
+  //sendText(txString.buffer);
+  
+  if(regval &= (1<<sens)){
+    state = 1;
+  }
+  else{
+    state = 0;
+  }
+
+  return state;
+}
+
+/* =====================================================================
+    DAC subsystem
+    http://www.ti.com/lit/ds/symlink/dac081c085.pdf
+====================================================================== */
+
+/* ---------------------------------------------------------------------
+   initializes the motor current DAC
+ --------------------------------------------------------------------- */
+void initDAC(uint8_t mot){
+
+  uint8_t addr = 0;
+
+  addr = getDACAddress(mot);
+  IIC.data[0] = 0x00; IIC.data[1] = 0x00;
+  IICwrite(addr, IIC.data, 2);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   sets the motor current for DRV8825
+ --------------------------------------------------------------------- */
+void setMotorCurrent(uint8_t mot, float curr){
+
+  uint8_t addr = 0;
+  uint8_t val = 0;
+  uint16_t reg = 0;
+
+  if(curr < 0.0){
+    curr = 0.0;
+  }
+
+  if(curr > 2.5){ /* maximum for DRV8825: 2.5 Ampere */
+    curr = 2.5;
+  }
+
+  addr = getDACAddress(mot);
+
+  //I = Vref / (5 * Rsense)
+  //with Rsense = 0.2 Ohm
+  // --> I = Vref
+  
+  /* 255 / 3.3V * 2.5A = 193 */
+  /* 193 <=> 2.5 A, 193/2.5 = 77.2 */
+
+  val = (uint8_t)floor(77.2 * curr);
+
+  IIC.data[0] = (val & 0xF0) >> 4;
+  IIC.data[1] = (val & 0x0F) << 4;
+
+  IICwrite(addr, IIC.data, 2);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   reads out the motor current
+ --------------------------------------------------------------------- */
+float getMotorCurrent(uint8_t mot){
+
+  float curr = 0.0;
+  uint8_t addr = 0;
+  uint16_t data = 0;
+  uint8_t val = 0;
+
+  addr = getDACAddress(mot);
+
+  IICread(addr, IIC.data, 2);
+
+  data |= (uint16_t)((IIC.data[0] << 8) & 0xFF00);  /* high byte */
+  data |= (uint16_t)((IIC.data[1]) & 0x00FF);       /* low byte  */
+
+  val = (data & 0x0FF0) >> 4;
+
+  /* according to setMotorCurrent() max(val) = 193 */
+  curr = ((float)val) / 77.2;
+
+  return curr;
+}
 
 /* =====================================================================
     Manual operation subsystem
@@ -1919,16 +3104,36 @@ void updateMenu(void){
  --------------------------------------------------------------------- */
 void initManualOperatingButtons(void){
 
-  DDRB = 0x00;    /* configure user interface port as input */
-  PORTB = 0xFF;   /* set all internal pull-ups */
+  /* only for rotary encoder + its button */
+  PORTC |= (1<<PC5)|(1<<PC4)|(1<<PC3);   /* set internal pull-ups */
+
+  /* init port expander for buttons
+   *
+   * http://www.gammon.com.au/forum/?id=10945
+   *
+   */
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IOCON, 0x22);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IODIR, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, IPOL, 0xFF);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPINTEN, 0xF8);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, DEFVAL, 0x03);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCON, 0x00);
+  writePortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPPU, 0xFF);
+  
+  //read GPIO register to clear the interrupt
+  uint8_t tmp = 0;
+  tmp = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, GPIO);
+
+  /* activate interrupt on INT0 (PD2) */
+  EICRA |= (1<<ISC01)|(1<<ISC00);  /* rising edge causes interrupt */
+  EIMSK |= (1<<INT0);   /* enable interrupt pin INT0 */
 
   /* set up a timer for button/rotary_encoder polling
    *
    * the 8-bit Timer/Counter0 is used for that
    */
-
   TCCR0A |= (1<<WGM01);   /* enable CTC */
-  OCR0A   = 80;           /* 80 is an empirical value for best behavior of the rotEnc. */
+  OCR0A   = 40;           /* 40 is an empirical value for best behavior of the rotEnc. */
   TIMSK0 |= (1<<OCIE0A);  /* enable interrupt */
   TCNT0   = 0;
 
@@ -1948,9 +3153,12 @@ uint8_t getButtonEvent(void){
 
   if(buttonState.readyToProcess){
     /* a button has been pressed */
-    state = buttonState.inputRegister^0xFF;   /* invert state register */
-
-    if(state & (1<<BUTTON_MOTOR0)){
+    state = buttonState.inputRegister;
+	
+	if(rotEnc.buttonPressed){
+      button = BUTTON_ROT_ENC_PRESS;
+	}
+	else if(state & (1<<BUTTON_MOTOR0)){
       button = BUTTON_MOTOR0;
     }
     else if(state & (1<<BUTTON_MOTOR1)){
@@ -1965,9 +3173,6 @@ uint8_t getButtonEvent(void){
     else if(state & (1<<BUTTON_MENUESCAPE)){
       button = BUTTON_MENUESCAPE;
     }
-    else if(state & (1<<BUTTON_ROT_ENC)){
-      button = BUTTON_ROT_ENC;
-    }
     else{
       button = NO_BUTTON;
     }
@@ -1976,14 +3181,13 @@ uint8_t getButtonEvent(void){
   return button;
 }
 
-
 /* ---------------------------------------------------------------------
    process a rotary encoder event (rotation only)
  --------------------------------------------------------------------- */
 int8_t getRotaryEncoderEvent(void){
 
   /*
-   * returns the turned steps of the rotary encoder since
+   * returns the turned steps of the rotary encoder
    * since last look-up here
    */
 
@@ -1997,8 +3201,6 @@ int8_t getRotaryEncoderEvent(void){
   }
   return steps;
 }
-
-
 
 /* =====================================================================
     parser functions
@@ -2020,7 +3222,6 @@ void copyRXstring(void){
 
   return;
 }
-
 
 /* ---------------------------------------------------------------------
     returns the command code and fills the parameter list
@@ -2378,7 +3579,7 @@ char* commandGetSubSteps(char* param0){
 }
 
 /* ---------------------------------------------------------------------
-    returns a measured analog value
+    sets the desired substeps
  --------------------------------------------------------------------- */
 void commandSetSubSteps(char* param0, char* param1){
 
@@ -2394,7 +3595,8 @@ void commandSetSubSteps(char* param0, char* param1){
   }
   else{
     val = (double)atof(param1);
-    motor[i].subSteps = val;
+    //motor[i].subSteps = val;
+	setSubSteps(i, (uint8_t)round(val));
   }
 
   return;
@@ -2667,6 +3869,55 @@ void commandGetMotorState(char* param0){
 }
 
 /* ---------------------------------------------------------------------
+    returns the adjusted motor current
+ --------------------------------------------------------------------- */
+char* commandGetMotorCurrent(char* param0){
+
+  uint8_t i = 0;
+  double curr = 0.0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+  }
+  else{
+    curr = getMotorCurrent(i);
+    sprintf(txString.buffer, "%f", curr);
+  }
+  
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the desired motor current
+ --------------------------------------------------------------------- */
+void commandSetMotorCurrent(char* param0, char* param1){
+  
+  uint8_t i = 0;
+  //float curr = 0.0f;
+  //double curr = 0.0;
+  
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  //curr = atof(param1);
+  
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+	sendText(txString.buffer);
+  }
+  else{
+    //setMotorCurrent(i, curr);
+	motor[i].current = atof(param1);
+	setMotorCurrent(i, motor[i].current);
+  }
+  
+  //sprintf(txString.buffer, "\nmot %d\ncurr=%f", i, curr);
+  //sendText(txString.buffer);
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
 void commandDebugReadout(){
@@ -2686,6 +3937,28 @@ void commandDebugReadout(){
   return;
 }
 
+
+/* ---------------------------------------------------------------------
+    debugging output for anything we'd like to know
+ --------------------------------------------------------------------- */
+void commandLED(char* param0, char* param1, char* param2){
+
+  uint8_t a, b, c;
+
+  a = (uint8_t)strtol(param0, (char **)NULL, 10);
+  b = (uint8_t)strtol(param1, (char **)NULL, 10);
+  c = (uint8_t)strtol(param2, (char **)NULL, 16);
+  
+  c = getMotorSens(a, b);
+  
+  sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
+  sendText(txString.buffer);
+
+  //changeButtonLED(a, b, c);
+  //updateLEDs();
+  
+  return;
+}
 
 /* =====================================================================
     interrupt routines
@@ -2735,52 +4008,33 @@ ISR(USART0_RX_vect){
 ISR(TIMER0_COMPA_vect){
 
   uint8_t inputReg = 0;
+  static int16_t last = 0;  /* save old rotEnc value */
 
-  static int16_t last = 0;  /* save old rot enc value */
+  inputReg = PINC;  /* rotEnc is connected to PORTC */
 
-  inputReg = PINB;  /* all buttons are connected to PORTB */
-
-  /* first verify, that PINB differs from ALL_BUTTONS
-   * exclude the rotary encoder but include the rotary encoder press-function
-   */
-
-  /* check if a button is actually in process */
-  if(buttonState.readyToProcess){
-    return;
+  /* handle rotEnc's button */
+  if((inputReg^0xFF) & (1<<BUTTON_ROT_ENC)){
+    /* button was pressed */
+    if(rotEnc.buttonDebounce == 0){
+      // enter debouncing mode
+	  rotEnc.buttonDebounce = 1;
+    }
   }
   else{
-    /* debouncing the buttons */
-    if(buttonState.inDebouncingMode == 0){
-      if(buttonState.inputRegister != inputReg){
-        buttonState.inputRegister = inputReg;
-        buttonState.inDebouncingMode = 1;
-      }
-      else{
-        /* button is still pressed */
-        goto ROTARY_ENCODER;
-      }
-    }
-    else{
-      if(buttonState.inputRegister == inputReg){
-        /* debouncing completed, no register change --> button recognized */
+      /* button is no longer pressed ...*/
+      if(rotEnc.buttonDebounce == 1){
+        /* ... and we are already in debouncing mode -> generate event */
+        rotEnc.buttonPressed = 1;
+        rotEnc.buttonDebounce = 0;
         buttonState.readyToProcess = 1;
       }
-      else{
-        /* debouncing failed, start again */
-        buttonState.inputRegister = 0;
-      }
-
-      buttonState.inDebouncingMode = 0;
-    }
   }
 
-  /* now care about the rotary encoder (only rotations)
+  /* now care about the rotary encoder rotations
    *
    * code from:
    * http://www.mikrocontroller.net/articles/Drehgeber
    */
-
-ROTARY_ENCODER:
   last = (last << 2) & 0x0F;
   if(PHASE_A){
     last |= 2;
@@ -2792,6 +4046,28 @@ ROTARY_ENCODER:
     rotEnc.steps += pgm_read_byte(&table[last]);
     rotEnc.readyToProcess = 1;
   }
+}
+
+/* ---------------------------------------------------------------------
+    a button seems to be pressed ;-)
+ --------------------------------------------------------------------- */
+ISR(INT0_vect){
+   
+  //sendText("INT0");
+  
+  uint8_t regVal = 0;
+  
+  regVal = readPortExpanderRegister(IIC_BUTTON_PORTEXP_ADDR, INTCAP);
+  
+  /* check if a button is actually in process */
+  if(buttonState.readyToProcess){
+    return;
+  }
+  else{
+    buttonState.inputRegister = regVal;
+    buttonState.readyToProcess = 1;
+  }
+
 }
 
 /* ---------------------------------------------------------------------
@@ -2867,11 +4143,13 @@ ISR(TIMER2_COMPA_vect){
     }
   }
 
-  PORTC |= outputDir;     /* set direction */
-  _delay_us(5.0);         /* sync */
-  PORTC |= outputStep;    /* make exactly one step */
+  PORTA |= outputDir;     /* set direction */
+  _delay_us(1.0);         /* sync */
+  PORTA |= outputStep;    /* make exactly one step */
   _delay_us(2.0);         /* sync */
-  PORTC = 0;
+  PORTA &= ~outputStep;
+  _delay_us(1.0);
+  PORTA = 0;
 
   /* update motor positions */
   for(i = 0; i <= MAX_MOTOR; i++){
@@ -2942,32 +4220,65 @@ int main(void){
   txString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
   commandString.buffer = (char*)malloc(SERIAL_BUFFERSIZE * sizeof(char));
 
+  /* initialize IIC data buffer */
+  IIC.data = (char*)malloc(21 * sizeof(char));
+
   /* initialize displayBuffer */
   displayBuffer = (char*)malloc(DISPLAY_BUFFER_SIZE * sizeof(char));
 
-  lcd_init();
-  lcd_home();
+  /* initialize data for LEDs and WS2803 output pins */
+  for(i = 0; i < BUTT_LED_CHANNELS; i++){
+    buttLedData[i] = 0;
+  }
+  DDRC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
+  PORTC |= (1 << WS2803_CKI) | (1 << WS2803_SDI);
+
+  /* initialize PORTA as output for motor Step/Direction */
+  DDRA  = 0xFF;
+  PORTA = 0;
+
+  //lcd_init();
+  //lcd_home();
+
+  /* OLED setup */
+  OLEDinit(OLED_V2);
+  _delay_ms(500);
+  OLEDclear();
+  OLEDsetCursor(0, 0);
 
 RESET:
   initDataStructs();  /* must be the first function after reset! */
   initBuffers();
-  initADC();
+  //initADC();
+  initIIC();
   initMotorDelayTimer();
   initManualOperatingButtons();
   initUSART();
 
-  /* TODO: detect motors */
-
-  /* turn on all motors */
-  for(i = 0; i <= MAX_MOTOR; i++){
-    setMotorState(i, ON);
-  }
+  /* TODO: detect motors if connected */
 
   loadConfigFromEEPROM();
 
-  updateDisplay();
+  /* turn on all available motors */
+  //for(i = 0; i <= MAX_MOTOR; i++){
+  for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
+    initPortExpander(getPortExpanderAddress(i));
+    initDAC(i);
+	setMotorCurrent(i, motor[i].current);
+    //setMotorState(i, ON);
+    setSubSteps(i, (uint8_t)round(motor[i].subSteps));
+  }
 
-  sei();
+  updateDisplay();
+  
+  //init LEDs with default color pattern
+  for(i = 0; i < 4; i++){
+    changeButtonLED(i, GREEN, 0x7F);
+  }
+  changeButtonLED(LED_MESC, RED, 0x7F);
+  updateLEDs();
+
+  sei();  /* turn on interrupts */
 
   /* start the never ending story */
   for(;;){
@@ -3121,6 +4432,18 @@ RESET:
 
       case 0x9E:
         commandDebugReadout();
+        break;
+
+      case 0x9F:    /* LED */
+        commandLED(commandParam[1], commandParam[2], commandParam[3]);
+        break;
+		
+	  case 0xA0:    /* GETCURR */
+        sendText(commandGetMotorCurrent(commandParam[1]));
+        break;
+
+      case 0xA1:    /* SETCURR */
+        commandSetMotorCurrent(commandParam[1], commandParam[2]);
         break;
 
       default:

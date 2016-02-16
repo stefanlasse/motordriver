@@ -1,0 +1,292 @@
+%------------------
+% General Settings
+%------------------
+
+\def \docTitle    {Template}
+\def \docAuthor   {Stefan Lasse}
+\def \docSubject  {not specified}
+\def \docKeywords {found by google}
+
+\documentclass[a4paper, final, 11pt, oneside]{article}
+
+%----------
+% Packages
+%----------
+\usepackage{etex}
+\reserveinserts{30}
+\usepackage[utf8]{inputenc}
+
+\usepackage{slantsc}
+%\usepackage[urw-garamond]{mathdesign}
+\usepackage{garamondx}
+\usepackage[T1]{fontenc}
+
+
+%\usepackage{lmodern}  % lmodern is not allowed with garamond!!
+\usepackage[ngerman]{babel}
+\usepackage[intlimits]{amsmath}          % math symbols
+\usepackage{braket}                      % Dirac braket notation
+\usepackage{graphicx}                    % include pictures
+\usepackage{color}
+\usepackage[shell]{gnuplottex}           % gnuplot in latex
+\usepackage{pstricks}                    % post script tricks
+\usepackage{listings}                    % enter programming code
+\usepackage{fancyhdr}                    % make quite nice header/footer
+\usepackage[version=3]{mhchem}           % chemistry stuff
+\usepackage{relsize}
+
+\usepackage{pgfplots}
+\usepackage{tikz}                        % beautiful plots
+\pgfplotsset{compat = newest}
+\usepackage{units}                       % easy to use number-unit-package
+
+%----------------
+% PDF properties
+%----------------
+\usepackage[
+  pdftitle={\docTitle}
+ ,pdfsubject={\docSubject}
+ ,pdfauthor={\docAuthor}
+ ,pdfkeywords={\docKeywords}
+ ,pdfcreator={\docAuthor}
+ ,pdfstartview=Fit                       % startseite ganz anzeigen
+ ,pdfborder={0 0 0}                      % links ohne umrandungen
+ ,pdfdisplaydoctitle=true                % pdftitle statt dateinamen anzeigen
+ ,pdfcenterwindow=true                   % position pdf in center of the screen
+ ,setpagesize=true
+]{hyperref}
+
+%-------------------
+% Header und Footer
+%-------------------
+\pagestyle{fancy}
+\fancyhf{}        % clear all header/footer
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+\renewcommand{\subsectionmark}[1]{\markright{#1}}
+\fancyhead[LE,RO]{\textbf{\thepage}}
+\fancyhead[CE]{\footnotesize{\textit{\nouppercase{\rightmark}}}}
+\fancyhead[CO]{\footnotesize{\scshape{\nouppercase{\leftmark}}}}
+
+% number equations with sections before equation-index
+\numberwithin{equation}{section}
+
+%---------------------
+% My code definitions
+%---------------------
+
+\newtheorem{envdefinition}{Definition}[section]
+\newtheorem{envsatz}{Satz}
+
+% special numbers and letters
+\renewcommand{\i}{\mathrm{i}}                  % complex i
+\newcommand{\e}{\mathrm{e}}                    % Eulers number
+\renewcommand{\phi}{\varphi}                   % nicer phi
+\renewcommand{\epsilon}{\varepsilon}           % nicer epsilon
+\renewcommand{\theta}{\vartheta}               % nicer theta
+\renewcommand{\rho}{\varrho}                   % nicer rho
+\newcommand{\degree}{^{\circ}}                 % degree-circle
+
+% vectors and matrices
+\renewcommand{\vec}[1]{\boldsymbol{#1}}
+\newcommand{\Vek}[3]{\left(\begin{array}{c}#1\\#2 
+\ifthenelse{\equal{#3}{}}{}{\\#3}\end{array}\right)}
+
+% integral and derivative stuff:
+\renewcommand{\d}[1]{\;\mathrm{d}#1}           % integeration d
+% total derivative
+\newcommand{\td}[1]{\frac{\mathrm{d}}{\mathrm{d}#1}\,}
+\newcommand{\pd}[1]{\partial_{#1}\,}             % partial derivative
+
+% Braket notation
+\renewcommand{\bra}{\Bra}
+\renewcommand{\ket}{\Ket}
+\renewcommand{\braket}{\Braket}
+\renewcommand{\set}{\Set}
+
+% plus-minus with braces
+\newcommand{\PM}{\ensuremath{\substack{+\\[-0.25em]-}\,}}
+\renewcommand{\pm}{\PM}
+\newcommand{\pmp}{\ensuremath{\substack{\mathsmaller{(}+\mathsmaller{)}\\[-0.25em]-}\,}}
+\newcommand{\pmm}{\ensuremath{\substack{+\\[-0.25em]\mathsmaller{(}-\mathsmaller{)}}\,}}
+
+
+%----------------------------------------------------------
+% let the party start
+%----------------------------------------------------------
+\begin{document}
+
+\title{\docTitle}
+\author{\docAuthor}
+\date{\today}
+\maketitle\thispagestyle{empty}  % title page without page number
+% KEEP THIS EMPTY LINE HERE!!!!
+
+%\newpage
+\pagenumbering{roman}            % small roman page numbering
+                                 % just for TOC and preface
+%\tableofcontents
+%\newpage
+
+% some space for prefaces here
+% I want to thank my mother and my father and the dog and so on
+% and do forth
+
+\pagenumbering{arabic}  % now arabic page numbering
+                        % for the rest of the document
+
+%--------------------------------------------------------------
+\section{ADC Values}
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}
+      [
+        height = 6cm,
+        width  = \textwidth,  
+        xmin = -10,
+        xmax = 310,
+        xlabel = \#,
+        ymin = 980,
+        ymax = 1020,
+        % yticklabels={},
+        ylabel = ADC value,
+      ]
+  
+      \pgfplotstableread{motor_connected} \datatable
+  
+      \addplot [mark=+, only marks
+             %   error bars/.cd,
+             %   x dir=none,
+             %   y dir=both, y explicit
+               ]  
+        table[x=val, y=adc] from \datatable;
+
+    \end{axis}
+  \end{tikzpicture}
+  \caption{motor connected, not in zero position}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}
+      [
+        height = 6cm,
+        width  = \textwidth,  
+        xmin = -10,
+        xmax = 310,
+        xlabel = \#,
+        ymin = 0,
+        ymax = 20,
+        % yticklabels={},
+        ylabel = ADC Value,
+      ]
+  
+      \pgfplotstableread{motor_connected_in_zero_pos} \datatable
+  
+      \addplot [mark=+, only marks
+             %   error bars/.cd,
+             %   x dir=none,
+             %   y dir=both, y explicit
+               ]  
+        table[x=val, y=adc] from \datatable;
+
+    \end{axis}
+  \end{tikzpicture}
+  \caption{motor connected, in zero position}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}
+      [
+        height = 6cm,
+        width  = \textwidth,  
+        xmin = -10,
+        xmax = 310,
+        xlabel = \#,
+        ymin = 800,
+        ymax = 1050,
+        % yticklabels={},
+        ylabel = ADC Value,
+      ]
+  
+      \pgfplotstableread{no_motor_connected} \datatable
+  
+      \addplot [mark=+, only marks
+             %   error bars/.cd,
+             %   x dir=none,
+             %   y dir=both, y explicit
+               ]  
+        table[x=val, y=adc] from \datatable;
+
+    \end{axis}
+  \end{tikzpicture}
+  \caption{motor not connected}
+\end{figure}
+
+
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}
+      [
+        height = 6cm,
+        width  = \textwidth,  
+        xmin = -10,
+        xmax = 10100,
+        xlabel = \#,
+        ymin = 0,
+        ymax = 1100,
+        % yticklabels={},
+        ylabel = ADC value,
+      ]
+  
+      \pgfplotstableread{data_TLE4906.dat} \datatable
+  
+      \addplot [mark=+, only marks
+             %   error bars/.cd,
+             %   x dir=none,
+             %   y dir=both, y explicit
+               ]  
+        table[x=val, y=adc] from \datatable;
+
+    \end{axis}
+  \end{tikzpicture}
+  \caption{TLE4906}
+\end{figure}
+
+
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}
+      [
+        height = 6cm,
+        width  = \textwidth,  
+        xmin = -10,
+        xmax = 10100,
+        xlabel = \#,
+        ymin = 0,
+        ymax = 1100,
+        % yticklabels={},
+        ylabel = ADC value,
+      ]
+  
+      \pgfplotstableread{data_A1121.dat} \datatable
+  
+      \addplot [mark=+, only marks
+             %   error bars/.cd,
+             %   x dir=none,
+             %   y dir=both, y explicit
+               ]  
+        table[x=val, y=adc] from \datatable;
+
+    \end{axis}
+  \end{tikzpicture}
+  \caption{A1121}
+\end{figure}
+
+\end{document}

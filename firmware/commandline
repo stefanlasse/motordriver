@@ -1,1 +1,1 @@
-make clean && make && avrdude -D -F -p m644 -P /dev/ttyUSB0 -c stk500v1 -b 115200 -U flash:w:motordriver.hex
+make clean && make && avrdude -D -F -p m1284p -P /dev/ttyUSB0 -c stk500v1 -b 115200 -U flash:w:motordriver.hex
