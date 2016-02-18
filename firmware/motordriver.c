@@ -43,7 +43,7 @@
 /* ---------------------------------------------------------------------
     some global definitions
  --------------------------------------------------------------------- */
-#define FW_VERSION (" 1.4")
+#define FW_VERSION (" 1.5")
 
 #define IDN_STRING_LENGTH 20
 #define SERIAL_BUFFERSIZE 64            /* should be enough */
@@ -283,7 +283,7 @@ ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden 
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manual operation */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
-ADD_COMMAND(31, "ZERORUNDONE\0",    1, 0x9F)  /* DEBUG information GPIO bla bla */
+ADD_COMMAND(31, "ZERORUNDONE\0",    1, 0x9F)  /* shows if zerorun is done */
 
 
 #define TOTAL_NUMBER_OF_COMMANDS 32
