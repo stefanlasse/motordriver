@@ -135,8 +135,8 @@ typedef struct{
 
 typedef struct{
 
-  int32_t  actualPosition;         /* always in steps */
-  int32_t  desiredPosition;        /* always in steps */
+  int64_t  actualPosition;         /* always in steps */
+  int64_t  desiredPosition;        /* always in steps */
   int16_t  opticalZeroPosition;    /* as offset from zero position in steps */
   double   stepError;
   uint8_t  isMoving;
@@ -150,6 +150,7 @@ typedef struct{
   uint16_t waitBetweenSteps;       /* in milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
+  int8_t   zerorunDone;            /* flag if the zerorun has run */
 
 }motorInfo;
 
@@ -282,9 +283,10 @@ ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden 
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manual operation */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
+ADD_COMMAND(31, "ZERORUNDONE\0",    1, 0x9F)  /* DEBUG information GPIO bla bla */
 
 
-#define TOTAL_NUMBER_OF_COMMANDS 31
+#define TOTAL_NUMBER_OF_COMMANDS 32
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -296,7 +298,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_21_, &cmd_22_, &cmd_23_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
-                                              &cmd_30_
+                                              &cmd_30_, &cmd_31_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -458,7 +460,7 @@ void sendChar(char c);
 void sendText(char *c);
 void prepareReset();
 void setMotorState(uint8_t motor, uint8_t status);
-void moveMotorRelative(uint8_t mot, int16_t steps);
+void moveMotorRelative(uint8_t mot, int64_t steps);
 void defineOpticalZeroPosition(uint8_t i, int8_t step);
 void motorZeroRun(uint8_t i);
 uint16_t getADCvalue(uint8_t sensPin);
@@ -545,6 +547,7 @@ void initDataStructs(void){
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
+    motor[i].zerorunDone          = 0;
   }
 
   rxString.charCount = 0;
@@ -779,7 +782,7 @@ void initMotorDelayTimer(void){
     This is a relative movement to the actual position.
     NOTE: this function is only used by motorZeroRun()
  --------------------------------------------------------------------- */
-void moveMotorRelative(uint8_t mot, int16_t steps){
+void moveMotorRelative(uint8_t mot, int64_t steps){
 
   int16_t  i;
   uint16_t j;
@@ -870,7 +873,7 @@ void motorZeroRun(uint8_t i){
   }
 
   /* move 90 degree forward */
-  moveMotorRelative(i, (int16_t)round(0.25*stepsPerRound));
+  moveMotorRelative(i, (int64_t)round(0.25*stepsPerRound));
 
   /* now we will find our zero position in
    * 3*<stepsPerRound>/4 steps */
@@ -880,7 +883,7 @@ void motorZeroRun(uint8_t i){
    * then move slowly to find the exact magnetic zero position. */
 
   /* now move till 200 steps before the zero-position */
-  moveMotorRelative(i, (int16_t)round(0.75*stepsPerRound) - 200);
+  moveMotorRelative(i, (int64_t)round(0.75*stepsPerRound) - 200);
 
   /* now get slow to find zero position precisely */
   motor[i].waitBetweenSteps = 5;
@@ -899,6 +902,7 @@ void motorZeroRun(uint8_t i){
   /* now set motor into a defined state */
   motor[i].actualPosition = 0;
   motor[i].desiredPosition = 0;
+  motor[i].zerorunDone = 1;
 
   /* allow motor movements again */
   initMotorDelayTimer();
@@ -1241,7 +1245,7 @@ void degreeToSteps(uint8_t mot, double degree, double multiply){
            *motor[mot].gearRatio
            *motor[mot].subSteps)/(360.0f)));
 
-  motor[mot].desiredPosition += (int16_t)roundedSteps;
+  motor[mot].desiredPosition += (int64_t)roundedSteps;
 
   /* calculate rounding-error */
   motor[mot].stepError +=
@@ -1281,7 +1285,7 @@ void radiansToSteps(uint8_t mot, double rad, double multiply){
            *motor[mot].gearRatio
            *motor[mot].subSteps)/(2.0f)));
 
-  motor[mot].desiredPosition += (int16_t)roundedSteps;
+  motor[mot].desiredPosition += (int64_t)roundedSteps;
 
   /* calculate rounding-error */
   motor[mot].stepError +=
@@ -2113,12 +2117,15 @@ void commandMoveRel(char* param0, char* param1, char* param2){
   }
 
   if(strcmp(param2, "steps") == 0){
-    motor[i].desiredPosition += (int16_t)strtol(param1, (char **)NULL, 10);
+    motor[i].desiredPosition += (int64_t)strtol(param1, (char **)NULL, 10);
   }
   if(strcmp(param2, "deg") == 0){
     degreeToSteps(i, atof(param1), 1.0f);
   }
   if(strcmp(param2, "pi") == 0){
+    radiansToSteps(i, atof(param1), 1.0f);
+  }
+  if(strcmp(param2, "rad") == 0){
     radiansToSteps(i, atof(param1), 1.0f);
   }
 
@@ -2683,6 +2690,35 @@ void commandDebugReadout(){
   return;
 }
 
+/* ---------------------------------------------------------------------
+    returns if motor has done a zerorun
+ --------------------------------------------------------------------- */
+void commandZerorunDone(char* param0){
+
+  uint8_t i = 0;
+  uint8_t val = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor");
+    sendText(txString.buffer);
+    return;
+  }
+  else{
+    if(motor[i].zerorunDone){
+      sprintf(txString.buffer, "1");
+    }
+    else{
+      sprintf(txString.buffer, "0");
+    }
+
+    sendText(txString.buffer);
+  }
+
+  return;
+}
+
 
 /* =====================================================================
     interrupt routines
@@ -2797,7 +2833,7 @@ ROTARY_ENCODER:
 ISR(TIMER2_COMPA_vect){
 
   uint8_t i = 0;
-  int16_t stepDiff[MAX_MOTOR + 1];
+  int64_t stepDiff[MAX_MOTOR + 1];
 
   uint8_t outputDir  = 0;
   uint8_t outputStep = 0;
@@ -2879,7 +2915,7 @@ ISR(TIMER2_COMPA_vect){
           /* so set back to 0 */
           motor[i].actualPosition = 0;
           /* correct desired motor position */
-          motor[i].desiredPosition -= (int16_t)round(stepsPerFullRotation[i]);
+          motor[i].desiredPosition -= (int64_t)round(stepsPerFullRotation[i]);
         }
         motor[i].actualPosition++;
         if(motor[i].isMovingInfinite){
@@ -2890,9 +2926,9 @@ ISR(TIMER2_COMPA_vect){
       /* check if we got one full rotation */
         if(((motor[i].actualPosition) - 1) < 0){
           /* so set back to max steps per round */
-          motor[i].actualPosition = (int16_t)round(stepsPerFullRotation[i]);
+          motor[i].actualPosition = (int64_t)round(stepsPerFullRotation[i]);
           /* correct desired motor position */
-          motor[i].desiredPosition += (int16_t)round(stepsPerFullRotation[i]);
+          motor[i].desiredPosition += (int64_t)round(stepsPerFullRotation[i]);
         }
         motor[i].actualPosition--;
         if(motor[i].isMovingInfinite){
@@ -3118,6 +3154,10 @@ RESET:
 
       case 0x9E:
         commandDebugReadout();
+        break;
+        
+      case 0x9F:    /* ZERORUNDONE */
+        commandZerorunDone(commandParam[1]);
         break;
 
       default:
