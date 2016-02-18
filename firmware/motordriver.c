@@ -267,7 +267,7 @@ ADD_COMMAND(12, "GETANALOG\0",      1, 0x8C)  /* returns an ADC measurement */
 ADD_COMMAND(13, "GETOPTZEROPOS\0",  1, 0x8D)  /* returns saved optical zero position */
 ADD_COMMAND(14, "SETOPTZEROPOS\0",  2, 0x8E)  /* sets the optical zero position in steps */
 ADD_COMMAND(15, "GETGEARRATIO\0",   1, 0x8F)  /* returns the mechanical gear ratio */
-ADD_COMMAND(16, "SETGEARRATIO\0",   2, 0x90)  /* set mechanical gear ratio for a motor */
+ADD_COMMAND(16, "SETGEARRATIO\0",   3, 0x90)  /* set mechanical gear ratio for a motor */
 ADD_COMMAND(17, "GETFULLROT\0",     1, 0x91)  /* returns steps per full rotation */
 ADD_COMMAND(18, "SETFULLROT\0",     2, 0x92)  /* sets steps per full rotation */
 ADD_COMMAND(19, "GETSUBSTEPS\0",    1, 0x93)  /* returns the adjusted substeps  */
@@ -503,7 +503,7 @@ char* commandGetAnalog(char* param0);
 char* commandGetOptZeroPos(char* param0);
 void  commandSetOptZeroPos(char* param0, char* param1);
 char* commandGetGearRatio(char* param0);
-void  commandSetGearRatio(char* param0, char* param1);
+void  commandSetGearRatio(char* param0, char* param1, char* param2);
 char* commandGetFullRotation(char* param0);
 void  commandSetFullRotation(char* param0, char* param1);
 char* commandGetSubSteps(char* param0);
@@ -2299,21 +2299,34 @@ char* commandGetGearRatio(char* param0){
 
 /* ---------------------------------------------------------------------
     sets the mechanical gear ratio
+    param0: motor number
+    param1: target gear
+    param2: motor gear
  --------------------------------------------------------------------- */
-void commandSetGearRatio(char* param0, char* param1){
+void commandSetGearRatio(char* param0, char* param1, char* param2){
 
   uint8_t i = 0;
+  int16_t targetGear = 0;
+  int16_t motorGear = 0;
   double val = 0.0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
-
+  targetGear = (int16_t)strtol(param1, (char **)NULL, 10);
+  motorGear  = (int16_t)strtol(param2, (char **)NULL, 10);
+  
+  
   if(i < MOTOR0 || i > MAX_MOTOR){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
     return;
   }
+  else if(targetGear < 1 || motorGear < 1){
+    sprintf(txString.buffer, "err: negative teeth: %d %d", targetGear, motorGear);
+    sendText(txString.buffer);
+    return;    
+  }
   else{
-    val = (double)atof(param1);
+    val = (double)targetGear/(double)motorGear;
     motor[i].gearRatio = val;
   }
 
@@ -3088,7 +3101,7 @@ RESET:
         break;
 
       case 0x90:    /* SETGEARRATIO */
-        commandSetGearRatio(commandParam[1], commandParam[2]);
+        commandSetGearRatio(commandParam[1], commandParam[2], commandParam[3]);
         break;
 
       case 0x91:    /* GETFULLROT */
