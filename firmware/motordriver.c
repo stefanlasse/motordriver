@@ -820,8 +820,8 @@ void moveMotorRelative(uint8_t mot, int64_t steps){
  --------------------------------------------------------------------- */
 void defineOpticalZeroPosition(uint8_t i, int8_t step){
 
-  motor[i].desiredPosition = motor[i].actualPosition + step;
-  motor[i].opticalZeroPosition = motor[i].desiredPosition;
+  motor[i].desiredPosition += step;
+  motor[i].opticalZeroPosition += step;
 
   return;
 }
