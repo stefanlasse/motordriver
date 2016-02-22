@@ -1784,6 +1784,45 @@ void updateLEDs(void){
 }
 
 /* ---------------------------------------------------------------------
+   change motor button LED color/intensity
+ --------------------------------------------------------------------- */
+void changeMotorButtonLED(uint8_t motor, uint8_t enable){
+    
+  if(enable){ //button lights white
+    changeButtonLED(motor, BLUE, 0x0F);
+    changeButtonLED(motor, GREEN, 0x0F);
+    changeButtonLED(motor, RED, 0x08);
+  }
+  else{ //button lights green
+    changeButtonLED(motor, BLUE, 0x00);
+    changeButtonLED(motor, GREEN, 0x0F);
+    changeButtonLED(motor, RED, 0x00);
+  }
+  updateLEDs();
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   update motor button LEDs
+ --------------------------------------------------------------------- */
+void updateMotorButtonLEDs(void){
+  
+  uint8_t i = 0;
+
+  for(i = 0; i <= MAX_MOTOR; i++){
+    if(menu.selectedMotor & (1 << i)){
+      changeMotorButtonLED(i, 1);
+    }
+    else{
+      changeMotorButtonLED(i, 0);
+    }
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
    set desired motor position if unit is degree
  --------------------------------------------------------------------- */
 void degreeToSteps(uint8_t mot, double degree, double multiply){
@@ -2240,21 +2279,25 @@ void updateMenu(void){
       case BUTTON_MOTOR0:
         menu.selectedMotor ^= (1 << MOTOR0);
         menu.newMenuMode = MENU_VALUE_CHANGE;
+        updateMotorButtonLEDs();
         break;
 
       case BUTTON_MOTOR1:
         menu.selectedMotor ^= (1 << MOTOR1);
         menu.newMenuMode = MENU_VALUE_CHANGE;
+        updateMotorButtonLEDs();
         break;
 
       case BUTTON_MOTOR2:
         menu.selectedMotor ^= (1 << MOTOR2);
         menu.newMenuMode = MENU_VALUE_CHANGE;
+        updateMotorButtonLEDs();
         break;
 
       case BUTTON_MOTOR3:
         menu.selectedMotor ^= (1 << MOTOR3);
         menu.newMenuMode = MENU_VALUE_CHANGE;
+        updateMotorButtonLEDs();
         break;
 
       case BUTTON_ROT_ENC_PRESS:
@@ -2360,6 +2403,7 @@ void updateMenu(void){
               motorZeroRun(i);
               menu.selectedMotor ^= (1 << i);
               updateDisplay();
+              updateMotorButtonLEDs();
             }
           }
           /* get back to the MENU_SCROLL_MODE when finished calibration*/
@@ -3949,13 +3993,13 @@ void commandLED(char* param0, char* param1, char* param2){
   b = (uint8_t)strtol(param1, (char **)NULL, 10);
   c = (uint8_t)strtol(param2, (char **)NULL, 16);
   
-  c = getMotorSens(a, b);
+  //c = getMotorSens(a, b);
   
   sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
   sendText(txString.buffer);
 
-  //changeButtonLED(a, b, c);
-  //updateLEDs();
+  changeButtonLED(a, b, c);
+  updateLEDs();
   
   return;
 }
@@ -4260,12 +4304,12 @@ RESET:
   loadConfigFromEEPROM();
 
   /* turn on all available motors */
-  //for(i = 0; i <= MAX_MOTOR; i++){
-  for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
+  for(i = 0; i <= MAX_MOTOR; i++){
+  //for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
     initPortExpander(getPortExpanderAddress(i));
     initDAC(i);
-	setMotorCurrent(i, motor[i].current);
-    //setMotorState(i, ON);
+    setMotorCurrent(i, motor[i].current);
+    setMotorState(i, ON);
     setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
@@ -4273,9 +4317,9 @@ RESET:
   
   //init LEDs with default color pattern
   for(i = 0; i < 4; i++){
-    changeButtonLED(i, GREEN, 0x7F);
+    changeButtonLED(i, GREEN, 0x0F);
   }
-  changeButtonLED(LED_MESC, RED, 0x7F);
+  changeButtonLED(LED_MESC, RED, 0x0F);
   updateLEDs();
 
   sei();  /* turn on interrupts */
@@ -4288,6 +4332,8 @@ RESET:
 
     /* check for changed values and update them on the display */
     updateDisplay();
+    
+    //updateMotorButtonLEDs();
 
     /* check for new received command */
     if(rxString.readyToProcess){

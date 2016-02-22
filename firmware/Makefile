@@ -1,7 +1,7 @@
 FILENAME = motordriver
 #DEV=$(shell dmesg | grep ttyUSB | tail -1 | sed s/.*tty/\\/dev\\/tty\/)
-#DEV=COM3
-DEV=COM9
+DEV=COM3
+#DEV=COM9
 #SPEED=57600
 SPEED=115200
 
