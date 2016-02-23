@@ -443,35 +443,43 @@ char *displayBuffer;   /* hold the display contents, initialized in main() */
 
 
 /* NOTE: '\n' will identify a line break on the display */
-ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0")
-ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"        )
-ADD_DISPLAY_TEXT(2 , "Change step\nunit\0"             )
-ADD_DISPLAY_TEXT(3 , "Change step\nwait time\0"        )
-ADD_DISPLAY_TEXT(4 , "Set step\nmultiplier\0"          )
-ADD_DISPLAY_TEXT(5 , "Run zero\ncalibration\0"         )
-ADD_DISPLAY_TEXT(6 , "Change motor\nsubstep\0"         )
-ADD_DISPLAY_TEXT(7 , "Save current\nconfiguration\0"   )
-ADD_DISPLAY_TEXT(8 , "Load last\nconfiguration\0"      )
-ADD_DISPLAY_TEXT(9 , "Define optical\nzero position\0" )
-ADD_DISPLAY_TEXT(10, "Set constant\nangular speed\0"   )
-ADD_DISPLAY_TEXT(11, "Run internal\nprogram\0"         )
-ADD_DISPLAY_TEXT(12, "Change motor\ncurrent\0"         )
+ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0"    )
+ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"     )
+ADD_DISPLAY_TEXT(2 , "Set step\nmultiplier\0"       )
+ADD_DISPLAY_TEXT(3 , "Change step\nunit\0"          )
+ADD_DISPLAY_TEXT(4 , "Run internal\nprogram\0"      )
+ADD_DISPLAY_TEXT(5 , "Run with\nconstant speed\0"   )
+ADD_DISPLAY_TEXT(6 , "Define zero\nposition\0"      )
+ADD_DISPLAY_TEXT(7 , "Run zero\ncalibration\0"      )
+ADD_DISPLAY_TEXT(8 , "Enter\nsettings menu\0"       )
 
-#define NUMBER_OF_DISPLAY_MENUS 13
+ADD_DISPLAY_TEXT(9 , "dummy\nmenu\0"                )
+
+ADD_DISPLAY_TEXT(10, "Change motor\nsubstep\0"      )
+ADD_DISPLAY_TEXT(11, "Change motor\ncurrent\0"      )
+ADD_DISPLAY_TEXT(12, "Change step\nwait time\0"     )
+ADD_DISPLAY_TEXT(13, "Save current\nconfiguration\0")
+ADD_DISPLAY_TEXT(14, "Load last\nconfiguration\0"   )
+
+
+#define NUMBER_OF_DISPLAY_MENUS 9
+#define NUMBER_OF_SETTINGS_MENUS 5
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
-#define MENU_CHANGE_STEP_UNIT       2
-#define MENU_CHANGE_WAIT_TIME       3
-#define MENU_SET_STEP_MULTIPL       4
-#define MENU_RUN_ZERO_CALIBRATION   5
-#define MENU_CHANGE_SUBSTEPS        6
-#define MENU_SAVE_CONFIG            7
-#define MENU_LOAD_CONFIG            8
-#define MENU_OPTICAL_ZERO_POS       9
-#define MENU_CONST_ANGULAR_SPEED    10
-#define MENU_RUN_PROGRAM            11
-#define MENU_CHANGE_CURR            12
+#define MENU_SET_STEP_MULTIPL       2
+#define MENU_CHANGE_STEP_UNIT       3
+#define MENU_RUN_PROGRAM            4
+#define MENU_CONST_ANGULAR_SPEED    5
+#define MENU_OPTICAL_ZERO_POS       6
+#define MENU_RUN_ZERO_CALIBRATION   7
+#define MENU_SETTINGS               8
+
+#define MENU_CHANGE_SUBSTEPS        10
+#define MENU_CHANGE_CURR            11
+#define MENU_CHANGE_WAIT_TIME       12
+#define MENU_SAVE_CONFIG            13
+#define MENU_LOAD_CONFIG            14
 
 
 /* to hold a list of menu entries */
@@ -479,7 +487,7 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
                                             &disp_9_,  &disp_10_, &disp_11_,
-											&disp_12_
+                                            &disp_12_, &disp_13_, &disp_14_
                                            };
 
 /* to keep information where we are in the menu */
@@ -487,6 +495,7 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
 #define MENU_SCROLL_MODE    2 /* scroll through the menu */
 #define MENU_VALUE_CHANGE   3 /* change a selected value */
 #define MENU_FAST_MOVE_MODE 4 /* moves a motor 10 times faster */
+#define MENU_SETTINGS_MODE  5 /* enter settings submenu */
 
 #define NUMBER_DISPLAY_MENU_STRINGS   2
 #define DISPLAY_MENU_STRING_LENGTH    17
@@ -662,7 +671,7 @@ void initDataStructs(void){
     motor[i].waitBetweenSteps     = 3;
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
-	motor[i].current              = 1.0;
+    motor[i].current              = 1.0;
   }
 
   rxString.charCount = 0;
@@ -1961,6 +1970,26 @@ void updateDisplay(void){
         }
       }
       break;
+      
+    case MENU_SETTINGS_MODE:
+      if(menu.currentDisplayedMenu != menu.newDisplayedMenu){
+        changeDisplayMenu(menu.newDisplayedMenu);
+        //lcd_setcursor(0, 1);  /* line 1 */
+        //lcd_string(menu.newMenuText[0]);
+        OLEDsetCursor(0, 0);
+        OLEDprintCC(menu.newMenuText[0]);
+        strcpy(menu.currentMenuText[0], menu.newMenuText[0]);
+        //lcd_setcursor(0, 2);  /* line 2 */
+        //lcd_string(menu.newMenuText[1]);
+        OLEDsetCursor(0, 1);
+        OLEDprintCC(menu.newMenuText[1]);
+        strcpy(menu.currentMenuText[1], menu.newMenuText[1]);
+        menu.currentDisplayedMenu = menu.newDisplayedMenu;
+        for(j = 0; j <= NUMBER_DISPLAY_VALUE_STRINGS; j++){
+          sprintf(menu.currentDisplayValue[j], "no text");
+        }
+      }
+      break;
 
     case MENU_CHANGE_MODE:
     case MENU_VALUE_CHANGE:
@@ -2198,11 +2227,19 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       sprintf(menu.newDisplayValue[3], "        ");
       break;
 	  
-	case MENU_CHANGE_CURR:
+    case MENU_CHANGE_CURR:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
         sprintf(menu.newDisplayValue[i], "%c%.1f A", c, motor[i].current);
       }
+      break;
+      
+    case MENU_SETTINGS:
+      sprintf(menu.newDisplayValue[0], "test    ");
+      sprintf(menu.newDisplayValue[1], "test    ");
+      sprintf(menu.newDisplayValue[2], "test    ");
+      sprintf(menu.newDisplayValue[3], "test    ");
+      menu.currentMenuMode = MENU_SETTINGS_MODE;
       break;
 
     default:  /* in case of fire ;-) */
@@ -2259,6 +2296,35 @@ void updateMenu(void){
     }
 
     menu.newDisplayedMenu = (uint8_t)menuPrompt;
+    
+    /* or enter the MENU_CHANGE_MODE */
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor == 0){
+      menu.newMenuMode = MENU_CHANGE_MODE;
+    }
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor != 0){
+      menu.newMenuMode = MENU_VALUE_CHANGE;
+    }
+    
+    //or enter MENU_SETTINGS_MODE
+    if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menuPrompt == MENU_SETTINGS){
+      menu.newMenuMode = MENU_SETTINGS_MODE;
+      menu.newDisplayedMenu = MENU_CHANGE_SUBSTEPS;
+    }
+  }
+  
+  if(menuState == MENU_SETTINGS_MODE){
+    /* so here we want to scroll through the settings menu */
+          
+    rotEncVal = getRotaryEncoderEvent();  /* get wanted menu prompt */
+    menuPrompt = (menuPrompt + (int8_t)rotEncVal);
+    if(menuPrompt > 9 + NUMBER_OF_SETTINGS_MENUS){
+      menuPrompt = 10;
+    }
+    if(menuPrompt < 10){
+      menuPrompt = 9 + NUMBER_OF_SETTINGS_MENUS;
+    }
+
+    menu.newDisplayedMenu = (uint8_t)menuPrompt;
 
     /* or enter the MENU_CHANGE_MODE */
     if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor == 0){
@@ -2267,7 +2333,15 @@ void updateMenu(void){
     if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menu.selectedMotor != 0){
       menu.newMenuMode = MENU_VALUE_CHANGE;
     }
+    
+    buttonVal = getButtonEvent();
+    if(buttonVal == BUTTON_MENUESCAPE){
+      /* get back to the MENU_SCROLL_MODE */
+      menu.newMenuMode = MENU_SCROLL_MODE;
+      menu.newDisplayedMenu = MENU_SETTINGS;
+    }
   }
+  
 
   if((menuState == MENU_CHANGE_MODE) || (menuState == MENU_VALUE_CHANGE)){
     /* Well, we want to select a motor to change its above selected value */
@@ -2305,10 +2379,18 @@ void updateMenu(void){
         break;
 
       case BUTTON_MENUESCAPE:
-        /* or get back to the MENU_SCROLL_MODE */
-        menu.newMenuMode = MENU_SCROLL_MODE;
-        menu.currentDisplayedMenu += 1;
-        menu.fastMovingMode = OFF;
+        if(menu.currentDisplayedMenu < 10){
+          /* get back to the MENU_SCROLL_MODE */
+          menu.newMenuMode = MENU_SCROLL_MODE;
+          menu.currentDisplayedMenu += 1;
+          menu.fastMovingMode = OFF;
+        }
+        else{
+          /* get back to the MENU_SETTINGS_MODE */
+          menu.newMenuMode = MENU_SETTINGS_MODE;
+          menu.currentDisplayedMenu += 1;
+          menu.fastMovingMode = OFF;
+        }
         break;
 
       default:
@@ -2415,23 +2497,23 @@ void updateMenu(void){
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               tmp = motor[i].subSteps;
-			  if(rotEncVal > 0){
+              if(rotEncVal > 0){
                 //motor[i].subSteps *= 2.0;
-				tmp *= 2.0;
+                tmp *= 2.0;
               }
               if(rotEncVal < 0){
                 //motor[i].subSteps /= 2.0;
-				tmp /= 2.0;
+                tmp /= 2.0;
               }
               if(motor[i].subSteps < 1){
                 //motor[i].subSteps = 1;
-				tmp = 1;
+                tmp = 1;
               }
               if(motor[i].subSteps > 32){
                 //motor[i].subSteps = 32;
-				tmp = 32;
+                tmp = 32;
               }
-			  setSubSteps(i,tmp);
+              setSubSteps(i,tmp);
             }
           }
           break;
@@ -2441,6 +2523,7 @@ void updateMenu(void){
           //lcd_clear();
           //lcd_string("saved");
           OLEDclear();
+          OLEDsetCursor(0, 0);
           OLEDprintCC("saved");
           break;
 
@@ -2449,6 +2532,7 @@ void updateMenu(void){
           //lcd_clear();
           //lcd_string("loaded");
           OLEDclear();
+          OLEDsetCursor(0, 0);
           OLEDprintCC("loaded");
           break;
 
@@ -2522,20 +2606,25 @@ void updateMenu(void){
           }
           break;
 		  
-		case MENU_CHANGE_CURR:
+        case MENU_CHANGE_CURR:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
             if(menu.selectedMotor & (1 << i)){
               motor[i].current += (rotEncVal)/10.0;
-			  if(motor[i].current < 0){
+              if(motor[i].current < 0){
                 motor[i].current = 0;
               }
               if(motor[i].current > 2.5){
                 motor[i].current = 2.5;
               }
-			  setMotorCurrent(i, motor[i].current);
+              setMotorCurrent(i, motor[i].current);
             }
           }
-		  
+          break;
+          
+        case MENU_SETTINGS:        
+          OLEDclear();
+          OLEDsetCursor(0, 0);
+          OLEDprintCC("hello"); //should never show up
           break;
 
         default:  /* in case of fire ;-) */
@@ -4313,6 +4402,8 @@ RESET:
     setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
+  updateMenu();
+  
   updateDisplay();
   
   //init LEDs with default color pattern
