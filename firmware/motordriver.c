@@ -243,6 +243,7 @@ typedef struct{
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
   double   current;                /* in ampere */
+  int8_t   decay;                  /* could be: slow, fast, mixed */
 
 }motorInfo;
 
@@ -386,8 +387,10 @@ ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
 
 ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
 ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
+ADD_COMMAND(34, "GETDECAY\0",       1, 0xA2)  /* returns the motor decay */
+ADD_COMMAND(35, "SETDECAY\0",       2, 0xA3)  /* sets the decay for a motor */
 
-#define TOTAL_NUMBER_OF_COMMANDS 34
+#define TOTAL_NUMBER_OF_COMMANDS 36
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -400,7 +403,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
                                               &cmd_30_, &cmd_31_, &cmd_32_,
-											  &cmd_33_
+                                              &cmd_33_, &cmd_34_, &cmd_35_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -556,6 +559,7 @@ double   EEMEM stepsPerFullRotationEE[MAX_MOTOR+1];
 double   EEMEM subStepsEE[MAX_MOTOR+1];
 double   EEMEM stepMultiplierEE[MAX_MOTOR+1];
 double   EEMEM currentEE[MAX_MOTOR+1];
+uint8_t  EEMEM decayEE[MAX_MOTOR+1];
 uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
@@ -672,6 +676,7 @@ void initDataStructs(void){
     motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
     motor[i].current              = 1.0;
+    motor[i].decay                = 0;
   }
 
   rxString.charCount = 0;
@@ -1061,7 +1066,8 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_update_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
-	  eeprom_update_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
+	    eeprom_update_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
+      eeprom_update_block(&(motor[i].decay), &(decayEE[i]), sizeof(int8_t));
       eeprom_update_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_update_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -1095,7 +1101,8 @@ void loadConfigFromEEPROM(void){
       eeprom_read_block(&(motor[i].stepsPerFullRotation), &(stepsPerFullRotationEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].subSteps), &(subStepsEE[i]), sizeof(double));
       eeprom_read_block(&(motor[i].stepMultiplier), &(stepMultiplierEE[i]), sizeof(double));
-	  eeprom_read_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
+	    eeprom_read_block(&(motor[i].current), &(currentEE[i]), sizeof(double));
+      eeprom_read_block(&(motor[i].decay), &(decayEE[i]), sizeof(int8_t));
       eeprom_read_block(&(motor[i].stepUnit), &(stepUnitEE[i]), sizeof(int8_t));
       eeprom_read_block(&(motor[i].waitBetweenSteps), &(waitBetweenStepsEE[i]), sizeof(int16_t));
 
@@ -2529,6 +2536,7 @@ void updateMenu(void){
 
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
+          updateIICvalues();
           //lcd_clear();
           //lcd_string("loaded");
           OLEDclear();
@@ -3042,24 +3050,32 @@ void setMotorState(uint8_t mot, uint8_t state){
 }
 
 /* ---------------------------------------------------------------------
-     sets the motor decay (SLOW = 0, FAST = 1)
+     sets the motor decay (SLOW = 0, FAST = 1, MIXED = 2)
  --------------------------------------------------------------------- */
 void setMotorDecay(uint8_t mot, uint8_t state){
 
   uint8_t addr = 0;
   uint8_t regval = 0;
+  uint8_t iodir = 0;
 
   addr = getPortExpanderAddress(mot);
   regval = readPortExpanderRegister(addr, GPIOA);
+  iodir = readPortExpanderRegister(addr, IODIRA);
 
-  if(state){
-    regval &= ~(1<<PORTEXP_MOTOR_DECAY);
-  }
-  else{
+  if(state == 1){ //fast decay
     regval |= (1<<PORTEXP_MOTOR_DECAY);
+    iodir  &= ~(1<<PORTEXP_MOTOR_DECAY);
+  }
+  else if(state == 2){ //mixed decay
+    iodir  |= (1<<PORTEXP_MOTOR_DECAY); //set as input so pin is "open"
+  }
+  else{ //slow decay
+    regval &= ~(1<<PORTEXP_MOTOR_DECAY);
+    iodir  &= ~(1<<PORTEXP_MOTOR_DECAY);
   }
 
   writePortExpanderRegister(addr, GPIOA, regval);
+  writePortExpanderRegister(addr, IODIRA, iodir);
 
   return;
 }
@@ -3226,6 +3242,22 @@ float getMotorCurrent(uint8_t mot){
   curr = ((float)val) / 77.2;
 
   return curr;
+}
+
+/* ---------------------------------------------------------------------
+   update IIC values for all motors
+ --------------------------------------------------------------------- */
+void updateIICvalues(void){
+
+  uint8_t i = 0;
+
+  for(i = 0; i <= MAX_MOTOR; i++){
+    setMotorCurrent(i, motor[i].current);
+    setMotorDecay(i, motor[i].decay);
+    setSubSteps(i, (uint8_t)round(motor[i].subSteps));
+  }
+
+  return;
 }
 
 /* =====================================================================
@@ -3729,7 +3761,7 @@ void commandSetSubSteps(char* param0, char* param1){
   else{
     val = (double)atof(param1);
     //motor[i].subSteps = val;
-	setSubSteps(i, (uint8_t)round(val));
+    setSubSteps(i, (uint8_t)round(val));
   }
 
   return;
@@ -4028,24 +4060,57 @@ char* commandGetMotorCurrent(char* param0){
 void commandSetMotorCurrent(char* param0, char* param1){
   
   uint8_t i = 0;
-  //float curr = 0.0f;
-  //double curr = 0.0;
   
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
-  //curr = atof(param1);
   
   if(i < MOTOR0 || i > MAX_MOTOR){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
-	sendText(txString.buffer);
+    sendText(txString.buffer);
   }
   else{
-    //setMotorCurrent(i, curr);
-	motor[i].current = atof(param1);
-	setMotorCurrent(i, motor[i].current);
+    motor[i].current = atof(param1);
+    setMotorCurrent(i, motor[i].current);
+  }
+
+  return;
+}
+
+/* ---------------------------------------------------------------------
+    returns the motor decay
+ --------------------------------------------------------------------- */
+char* commandGetMotorDecay(char* param0){
+
+  uint8_t i = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+  }
+  else{
+    sprintf(txString.buffer, "%d", motor[i].decay);
   }
   
-  //sprintf(txString.buffer, "\nmot %d\ncurr=%f", i, curr);
-  //sendText(txString.buffer);
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
+    sets the desired motor decay
+ --------------------------------------------------------------------- */
+void commandSetMotorDecay(char* param0, char* param1){
+  
+  uint8_t i = 0;
+  
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  
+  if(i < MOTOR0 || i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+    sendText(txString.buffer);
+  }
+  else{
+    motor[i].decay = atof(param1);
+    setMotorDecay(i, motor[i].decay);
+  }
 
   return;
 }
@@ -4081,8 +4146,6 @@ void commandLED(char* param0, char* param1, char* param2){
   a = (uint8_t)strtol(param0, (char **)NULL, 10);
   b = (uint8_t)strtol(param1, (char **)NULL, 10);
   c = (uint8_t)strtol(param2, (char **)NULL, 16);
-  
-  //c = getMotorSens(a, b);
   
   sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
   sendText(txString.buffer);
@@ -4392,14 +4455,17 @@ RESET:
 
   loadConfigFromEEPROM();
 
-  /* turn on all available motors */
+  /* init all available motors */
   for(i = 0; i <= MAX_MOTOR; i++){
-  //for(i = 0; i <= MOTOR1; i++){    //for testing with 2 channel version only
     initPortExpander(getPortExpanderAddress(i));
     initDAC(i);
-    setMotorCurrent(i, motor[i].current);
+  }
+  
+  updateIICvalues();
+  
+  /* turn on all available motors */
+  for(i = 0; i <= MAX_MOTOR; i++){
     setMotorState(i, ON);
-    setSubSteps(i, (uint8_t)round(motor[i].subSteps));
   }
 
   updateMenu();
@@ -4480,6 +4546,7 @@ RESET:
 
       case 0x8A:    /* LOADCONF: load last saved machine configuration */
         loadConfigFromEEPROM();
+        updateIICvalues();
         break;
 
       case 0x8B:    /* ISMOVING? */
@@ -4575,12 +4642,20 @@ RESET:
         commandLED(commandParam[1], commandParam[2], commandParam[3]);
         break;
 		
-	  case 0xA0:    /* GETCURR */
+      case 0xA0:    /* GETCURR */
         sendText(commandGetMotorCurrent(commandParam[1]));
         break;
 
       case 0xA1:    /* SETCURR */
         commandSetMotorCurrent(commandParam[1], commandParam[2]);
+        break;
+        
+      case 0xA2:    /* GETDECAY */
+        sendText(commandGetMotorDecay(commandParam[1]));
+        break;
+
+      case 0xA3:    /* SETDECAY */
+        commandSetMotorDecay(commandParam[1], commandParam[2]);
         break;
 
       default:
