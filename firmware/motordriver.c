@@ -364,8 +364,8 @@ ADD_COMMAND(10, "LOADCONF\0",       0, 0x8A)  /* load last saved machine configu
 ADD_COMMAND(11, "ISMOVING\0",       1, 0x8B)  /* check if motor is moving */
 ADD_COMMAND(12, "GETANALOG\0",      1, 0x8C)  /* returns an ADC measurement */
 
-ADD_COMMAND(13, "GETOPTZEROPOS\0",  1, 0x8D)  /* returns saved optical zero position */
-ADD_COMMAND(14, "SETOPTZEROPOS\0",  2, 0x8E)  /* sets the optical zero position in steps */
+ADD_COMMAND(13, "GETZEROPOS\0",     1, 0x8D)  /* returns saved optical zero position */
+ADD_COMMAND(14, "SETZEROPOS\0",     2, 0x8E)  /* sets the optical zero position in steps */
 ADD_COMMAND(15, "GETGEARRATIO\0",   1, 0x8F)  /* returns the mechanical gear ratio */
 ADD_COMMAND(16, "SETGEARRATIO\0",   2, 0x90)  /* set mechanical gear ratio for a motor */
 ADD_COMMAND(17, "GETFULLROT\0",     1, 0x91)  /* returns steps per full rotation */
@@ -456,7 +456,7 @@ ADD_DISPLAY_TEXT(6 , "Define zero\nposition\0"      )
 ADD_DISPLAY_TEXT(7 , "Run zero\ncalibration\0"      )
 ADD_DISPLAY_TEXT(8 , "Enter\nsettings menu\0"       )
 
-ADD_DISPLAY_TEXT(9 , "dummy\nmenu\0"                )
+ADD_DISPLAY_TEXT(9 , "                \n                \0") //dummy menu
 
 ADD_DISPLAY_TEXT(10, "Change motor\nsubstep\0"      )
 ADD_DISPLAY_TEXT(11, "Change motor\ncurrent\0"      )
@@ -477,6 +477,8 @@ ADD_DISPLAY_TEXT(14, "Load last\nconfiguration\0"   )
 #define MENU_OPTICAL_ZERO_POS       6
 #define MENU_RUN_ZERO_CALIBRATION   7
 #define MENU_SETTINGS               8
+
+#define MENU_DUMMY                  9
 
 #define MENU_CHANGE_SUBSTEPS        10
 #define MENU_CHANGE_CURR            11
@@ -850,10 +852,18 @@ void sendText(char *c){
 void prepareReset(){
 
   /* turn off all motors */
+  /*
   setMotorState(MOTOR0, OFF);
   setMotorState(MOTOR1, OFF);
   setMotorState(MOTOR2, OFF);
   setMotorState(MOTOR3, OFF);
+  */
+
+  /* turn off all available motors */
+  uint8_t i;
+  for(i = 0; i <= MAX_MOTOR; i++){
+    setMotorState(i, OFF);
+  }
 
   /* stop polling timer for manual operating system */
   TCCR0B = 0;
@@ -1814,7 +1824,7 @@ void changeMotorButtonLED(uint8_t motor, uint8_t enable){
     changeButtonLED(motor, GREEN, 0x0F);
     changeButtonLED(motor, RED, 0x00);
   }
-  updateLEDs();
+  //updateLEDs();
 
   return;
 }
@@ -1834,7 +1844,8 @@ void updateMotorButtonLEDs(void){
       changeMotorButtonLED(i, 0);
     }
   }
-
+  updateLEDs();
+  
   return;
 }
 
@@ -2166,7 +2177,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
           sprintf(menu.newDisplayValue[i], "ForbZone");
         }
         else{
-          sprintf(menu.newDisplayValue[i], "%cMot %d", c, i);
+          sprintf(menu.newDisplayValue[i], "%cMot %d", c, i+1);
         }
       }
       break;
@@ -2389,13 +2400,15 @@ void updateMenu(void){
         if(menu.currentDisplayedMenu < 10){
           /* get back to the MENU_SCROLL_MODE */
           menu.newMenuMode = MENU_SCROLL_MODE;
-          menu.currentDisplayedMenu += 1;
+          //menu.currentDisplayedMenu += 1;
+          menu.currentDisplayedMenu = MENU_DUMMY;
           menu.fastMovingMode = OFF;
         }
         else{
           /* get back to the MENU_SETTINGS_MODE */
           menu.newMenuMode = MENU_SETTINGS_MODE;
-          menu.currentDisplayedMenu += 1;
+          //menu.currentDisplayedMenu += 1;
+          menu.currentDisplayedMenu = MENU_DUMMY;
           menu.fastMovingMode = OFF;
         }
         break;
@@ -2497,7 +2510,8 @@ void updateMenu(void){
           }
           /* get back to the MENU_SCROLL_MODE when finished calibration*/
           menu.newMenuMode = MENU_SCROLL_MODE;
-          menu.currentDisplayedMenu += 1;
+          //menu.currentDisplayedMenu += 1;
+          menu.currentDisplayedMenu = MENU_DUMMY;
           break;
 
         case MENU_CHANGE_SUBSTEPS:   /* change motor substeps */
@@ -4442,17 +4456,20 @@ int main(void){
   OLEDclear();
   OLEDsetCursor(0, 0);
 
-RESET:
+  initUSART();
+
   initDataStructs();  /* must be the first function after reset! */
   initBuffers();
   //initADC();
   initIIC();
+  
+RESET:
+  initDataStructs();  /* must be the first function after reset! */ 
   initMotorDelayTimer();
   initManualOperatingButtons();
-  initUSART();
-
+  
   /* TODO: detect motors if connected */
-
+  
   loadConfigFromEEPROM();
 
   /* init all available motors */
@@ -4473,13 +4490,20 @@ RESET:
   updateDisplay();
   
   //init LEDs with default color pattern
+  /*
   for(i = 0; i < 4; i++){
     changeButtonLED(i, GREEN, 0x0F);
   }
+  */
   changeButtonLED(LED_MESC, RED, 0x0F);
-  updateLEDs();
+  //updateLEDs();
+  updateMotorButtonLEDs();
+  
+  commandCode = 0x80;
 
   sei();  /* turn on interrupts */
+  
+  //sendText("start loop\0");
 
   /* start the never ending story */
   for(;;){
@@ -4503,6 +4527,7 @@ RESET:
         break;
 
       case 0x81:    /* *RST */
+        //sendText("reset\0");
         cli();
         prepareReset();
         goto RESET;
@@ -4536,7 +4561,7 @@ RESET:
         commandEnable(commandParam[1], commandParam[2]);
         break;
 
-      case 0x88:    /* POS? --> get position in [unit] */
+      case 0x88:    /* GETPOS --> get position in [unit] */
         sendText(commandGetMotorPosition(commandParam[1], commandParam[2]));
         break;
 
@@ -4549,7 +4574,7 @@ RESET:
         updateIICvalues();
         break;
 
-      case 0x8B:    /* ISMOVING? */
+      case 0x8B:    /* ISMOVING */
         sendText(commandIsMoving(commandParam[1]));
         break;
 
@@ -4557,11 +4582,11 @@ RESET:
         sendText(commandGetAnalog(commandParam[1]));
         break;
 
-      case 0x8D:    /* GETOPTZEROPOS */
+      case 0x8D:    /* GETZEROPOS */
         sendText(commandGetOptZeroPos(commandParam[1]));
         break;
 
-      case 0x8E:    /* SETOPTZEROPOS */
+      case 0x8E:    /* SETZEROPOS */
         commandSetOptZeroPos(commandParam[1], commandParam[2]);
         break;
 
