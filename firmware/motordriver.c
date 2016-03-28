@@ -3527,7 +3527,7 @@ void commandEnable(char* param0, char* param1){
     }
     else{
       setMotorState(i, OFF);
-      sendChar('a');
+      //sendChar('a');
     }
   }
 
@@ -4332,9 +4332,10 @@ ISR(TIMER2_COMPA_vect){
             motor[i].desiredPosition = motor[i].actualPosition;
             motor[i].isMoving = 0;
           }
-
-          outputDir  |= (1 << (2*i + 1)); /* 1 = CCW, 0 = CW */
-          outputStep |= (1 << (2*i));
+          else{
+            outputDir  |= (1 << (2*i + 1)); /* 1 = CCW, 0 = CW */
+            outputStep |= (1 << (2*i));
+          }
         }
         else{
           /* moving CW */
@@ -4344,8 +4345,9 @@ ISR(TIMER2_COMPA_vect){
             motor[i].desiredPosition = motor[i].actualPosition;
             motor[i].isMoving = 0;
           }
-
-          outputStep |= (1 << (2*i));
+          else{
+            outputStep |= (1 << (2*i));
+          }
         }
         /* so we will move and therefore set back the delay counter */
         motor[i].delayCounter = 2*motor[i].waitBetweenSteps-1;
