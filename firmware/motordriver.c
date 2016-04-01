@@ -381,7 +381,7 @@ ADD_COMMAND(25, "STOPALL\0",        0, 0x99)  /* stops all movements */
 ADD_COMMAND(26, "SETFORBZONE\0",    3, 0x9A)  /* defines a forbidden zone */
 ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden zone */
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
-ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* define a program step for manual operation */
+ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* is motor enabled or not */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
 ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
 
@@ -390,7 +390,9 @@ ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
 ADD_COMMAND(34, "GETDECAY\0",       1, 0xA2)  /* returns the motor decay */
 ADD_COMMAND(35, "SETDECAY\0",       2, 0xA3)  /* sets the decay for a motor */
 
-#define TOTAL_NUMBER_OF_COMMANDS 36
+ADD_COMMAND(36, "ISCON\0",          1, 0xA4)  /* is a motor connected or not */
+
+#define TOTAL_NUMBER_OF_COMMANDS 37
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -403,7 +405,8 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_24_, &cmd_25_, &cmd_26_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
                                               &cmd_30_, &cmd_31_, &cmd_32_,
-                                              &cmd_33_, &cmd_34_, &cmd_35_
+                                              &cmd_33_, &cmd_34_, &cmd_35_,
+                                              &cmd_36_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -4130,6 +4133,38 @@ void commandSetMotorDecay(char* param0, char* param1){
 }
 
 /* ---------------------------------------------------------------------
+    returns whether a motor is connected or not
+ --------------------------------------------------------------------- */
+char* commandIsConnected(char* param0){
+
+  uint8_t i = 0;
+  //uint8_t mota = 0;
+  //uint8_t motb = 0;
+
+  i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  
+  //mota = getMotorSens(i, PORTEXP_MOTOR_MOTA);
+  //motb = getMotorSens(i, PORTEXP_MOTOR_MOTB);
+  
+  //sprintf(txString.buffer, "\nmota=%d\nmotb=%d\n", mota, motb);
+  //sendText(txString.buffer);
+
+  if(i > MAX_MOTOR){
+    sprintf(txString.buffer, "err: unknown motor: %d", i);
+  }
+  else{
+    if(getMotorSens(i, PORTEXP_MOTOR_MOTA) && getMotorSens(i, PORTEXP_MOTOR_MOTB)){
+      sprintf(txString.buffer, "0"); //motor is not connected
+    }
+    else{
+      sprintf(txString.buffer, "1"); //motor is connected
+    }
+  }
+
+  return txString.buffer;
+}
+
+/* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
 void commandDebugReadout(){
@@ -4683,6 +4718,10 @@ RESET:
 
       case 0xA3:    /* SETDECAY */
         commandSetMotorDecay(commandParam[1], commandParam[2]);
+        break;
+        
+      case 0xA4:    /* ISCON */
+        sendText(commandIsConnected(commandParam[1]));
         break;
 
       default:
