@@ -1,22 +1,13 @@
-/*
-* characterOLED.cpp
-*
-* Created: 12/23/2014 4:52:25 PM
-*  Author: mkapoor
-*/
-
-
-
 
 // Derived from LiquidCrystal by David Mellis
 // With portions adapted from Elco Jacobs OLEDFourBit
 // Modified for 4-bit operation of the Winstar 16x2 Character OLED
 // By W. Earl for Adafruit - 6/30/12
 // Initialization sequence fixed by Technobly - 9/22/2013
+// ported form C++ to C by Stefan Lasse
 
 #include "characterOLED.h"
 
-//#include "Arduino.h"
 
 // On power up, the display is initilaized as:
 // 1. Display clear
@@ -39,312 +30,405 @@
 // can't assume that its in that state when a sketch starts (and the
 // LiquidCrystal constructor is called).
 
-characterOLED::characterOLED(uint8_t ver)
-{
-	init(ver);
+
+
+/* =====================================================================
+    Display subsystem
+
+  code to communicate with the OLED display.
+  It is based on a Winstar 16x2 Character OLED.
+
+  This display here in use is
+  - 2 lines with 16 characters each
+  - 5x7 dots per character
+  - driven in 4-bit-mode
+====================================================================== */
+
+
+/* ---------------------------------------------------------------------
+    initialize OLED display
+ --------------------------------------------------------------------- */
+void OLEDinit(uint8_t ver){
+
+  _oled_ver = ver;
+  if(_oled_ver != OLED_V1 && _oled_ver != OLED_V2){
+    _oled_ver = OLED_V2; // if error, default to newer version
+  }
+
+  _data_pins[0] = data4;
+  _data_pins[1] = data5;
+  _data_pins[2] = data6;
+  _data_pins[3] = data7;
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  _displayfunction = LCD_FUNCTIONSET | LCD_4BITMODE;
+
+  OLEDbegin(16, 2);
 }
 
-void characterOLED::init(uint8_t ver)
-{
-	_oled_ver = ver;
-	if(_oled_ver != OLED_V1 && _oled_ver != OLED_V2) {
-		_oled_ver = OLED_V2; // if error, default to newer version
-	}
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDpinMode(uint8_t pin, uint8_t mode){
 
-	
-	_data_pins[0] = data4;
-	_data_pins[1] = data5;
-	_data_pins[2] = data6;
-	_data_pins[3] = data7;
-
-
-	pinMode(rs_pin, OUTPUT);
-	pinMode(_rw_pin, OUTPUT);
-	pinMode(_enable_pin, OUTPUT);
-	
-	_displayfunction = LCD_FUNCTIONSET | LCD_4BITMODE;
-	
-	begin(16, 2);
+  if (mode) {
+    LCD_DDR |= (1 << pin);
+  } //output
+  else {
+    LCD_DDR &= ~(1 << pin);
+  } //input
 }
 
-void characterOLED::pinMode(uint8_t pin, uint8_t mode) {
-	if (mode) {
-		LCD_DDR |= (1 << pin);
-	} //output
-	else {
-		LCD_DDR &= ~(1 << pin);
-	} //input
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDdigitalWrite(uint8_t pin,uint8_t value){
+
+  if (value == LOW) {
+    LCD_PORT &= ~(1 << pin);
+  } //If low, write 0
+  else {
+    LCD_PORT |= (1 << pin);
+  } //if high, write 1
 }
 
-void characterOLED::digitalWrite(uint8_t pin,uint8_t value) {
-	if (value == LOW) {
-		LCD_PORT &= ~(1 << pin);
-	} //If low, write 0
-	else {
-		LCD_PORT |= (1 << pin);
-	} //if high, write 1
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+uint8_t OLEDdigitalRead(uint8_t pin){
+
+  return (LCD_PIN & (1 << pin));
 }
 
-uint8_t characterOLED::digitalRead(uint8_t pin) {
-	return (LCD_PIN & (1 << pin));
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDbegin(uint8_t cols, uint8_t lines){
+
+  _numlines = lines;
+  _currline = 0;
+
+  OLEDpinMode(rs_pin, OUTPUT);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDpinMode(_enable_pin, OUTPUT);
+
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_enable_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  _delay_us(50000); // give it some time to power up
+
+  // Now we pull both RS and R/W low to begin commands
+  for(int i = 0; i < 4; i++){
+    OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], LOW);
+  }
+
+  // Initialization sequence is not quite as documented by Winstar.
+  // Documented sequence only works on initial power-up.
+  // An additional step of putting back into 8-bit mode first is
+  // required to handle a warm-restart.
+  //
+  // In the data sheet, the timing specs are all zeros(!).  These have been tested to
+  // reliably handle both warm & cold starts.
+
+  // 4-Bit initialization sequence from Technobly
+  OLEDwrite4bits(0x03); // Put back into 8-bit mode
+  _delay_us(5000);
+  if(_oled_ver == OLED_V2){  // only run extra command for newer displays
+    OLEDwrite4bits(0x08);
+    _delay_us(5000);
+  }
+
+  OLEDwrite4bits(0x02); // Put into 4-bit mode
+  _delay_us(5000);
+  OLEDwrite4bits(0x02);
+  _delay_us(5000);
+  OLEDwrite4bits(0x08);
+  _delay_us(5000);
+
+  OLEDcommand(0x08);  // Turn Off
+  _delay_us(5000);
+  OLEDcommand(0x01);  // Clear Display
+  _delay_us(5000);
+  OLEDcommand(0x06);  // Set Entry Mode
+  _delay_us(5000);
+  OLEDcommand(0x02);  // Home Cursor
+  _delay_us(5000);
+  OLEDcommand(0x0C);  // Turn On - enable cursor & blink
+  _delay_us(5000);
 }
 
-void characterOLED::begin(uint8_t cols, uint8_t lines)
-{
-	_numlines = lines;
-	_currline = 0;
-	
-	pinMode(rs_pin, OUTPUT);
-	pinMode(_rw_pin, OUTPUT);
-	pinMode(_enable_pin, OUTPUT);
-	
-	digitalWrite(rs_pin, LOW);
-	digitalWrite(_enable_pin, LOW);
-	digitalWrite(_rw_pin, LOW);
-	
-	_delay_us(50000); // give it some time to power up
-	
-	// Now we pull both RS and R/W low to begin commands
-	
-	for (int i = 0; i < 4; i++) {
-		pinMode(_data_pins[i], OUTPUT);
-		digitalWrite(_data_pins[i], LOW);
-	}
+/* ---------------------------------------------------------------------
+    clear display
+ --------------------------------------------------------------------- */
+void OLEDclear(void){
 
-	// Initialization sequence is not quite as documented by Winstar.
-	// Documented sequence only works on initial power-up.
-	// An additional step of putting back into 8-bit mode first is
-	// required to handle a warm-restart.
-	//
-	// In the data sheet, the timing specs are all zeros(!).  These have been tested to
-	// reliably handle both warm & cold starts.
-
-	// 4-Bit initialization sequence from Technobly
-	write4bits(0x03); // Put back into 8-bit mode
-	_delay_us(5000);
-	if(_oled_ver == OLED_V2) {  // only run extra command for newer displays
-		write4bits(0x08);
-		_delay_us(5000);
-	}
-	write4bits(0x02); // Put into 4-bit mode
-	_delay_us(5000);
-	write4bits(0x02);
-	_delay_us(5000);
-	write4bits(0x08);
-	_delay_us(5000);
-	
-	command(0x08);	// Turn Off
-	_delay_us(5000);
-	command(0x01);	// Clear Display
-	_delay_us(5000);
-	command(0x06);	// Set Entry Mode
-	_delay_us(5000);
-	command(0x02);	// Home Cursor
-	_delay_us(5000);
-	command(0x0C);	// Turn On - enable cursor & blink
-	_delay_us(5000);
+  OLEDcommand(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
 }
 
-/********** high level commands, for the user! */
-void characterOLED::clear()
-{
-	command(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
-	//  _delay_us(2000);  // this command takes a long time!
+/* ---------------------------------------------------------------------
+    set cursor to home position
+ --------------------------------------------------------------------- */
+void OLEDhome(void){
+  OLEDcommand(LCD_RETURNHOME);  // set cursor position to zero
+  //  _delay_us(2000);  // this command takes a long time!
 }
 
-void characterOLED::home()
-{
-	command(LCD_RETURNHOME);  // set cursor position to zero
-	//  _delay_us(2000);  // this command takes a long time!
+/* ---------------------------------------------------------------------
+    set cursor to x-y-position (home = 0,0)
+ --------------------------------------------------------------------- */
+void OLEDsetCursor(uint8_t col, uint8_t row){
+
+  uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
+  if (row >= _numlines){
+    row = 0;  //write to first line if out off bounds
+  }
+
+  OLEDcommand(LCD_SETDDRAMADDR | (col + row_offsets[row]));
 }
 
-void characterOLED::setCursor(uint8_t col, uint8_t row)
-{
-	uint8_t row_offsets[] = { 0x00, 0x40, 0x14, 0x54 };
-	if ( row >= _numlines )
-	{
-		row = 0;  //write to first line if out off bounds
-	}
-	
-	command(LCD_SETDDRAMADDR | (col + row_offsets[row]));
+/* ---------------------------------------------------------------------
+    Turn the display on/off (quickly)
+ --------------------------------------------------------------------- */
+void OLEDnoDisplay(void){
+
+  _displaycontrol &= ~LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// Turn the display on/off (quickly)
-void characterOLED::noDisplay()
-{
-	_displaycontrol &= ~LCD_DISPLAYON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-void characterOLED::display()
-{
-	_displaycontrol |= LCD_DISPLAYON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDdisplay(void){
+
+  _displaycontrol |= LCD_DISPLAYON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// Turns the underline cursor on/off
-void characterOLED::noCursor()
-{
-	_displaycontrol &= ~LCD_CURSORON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-void characterOLED::cursor()
-{
-	_displaycontrol |= LCD_CURSORON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
+/* ---------------------------------------------------------------------
+    Turns the underline cursor off
+ --------------------------------------------------------------------- */
+void OLEDnoCursor(void){
+
+  _displaycontrol &= ~LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// Turn on and off the blinking cursor
-void characterOLED::noBlink()
-{
-	_displaycontrol &= ~LCD_BLINKON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-void characterOLED::blink()
-{
-	_displaycontrol |= LCD_BLINKON;
-	command(LCD_DISPLAYCONTROL | _displaycontrol);
+/* ---------------------------------------------------------------------
+    Turns the underline cursor on
+ --------------------------------------------------------------------- */
+void OLEDcursor(void){
+
+  _displaycontrol |= LCD_CURSORON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// These commands scroll the display without changing the RAM
-void characterOLED::scrollDisplayLeft(void)
-{
-	command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
-}
-void characterOLED::scrollDisplayRight(void)
-{
-	command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
-}
+/* ---------------------------------------------------------------------
+    Turn off the blinking cursor
+ --------------------------------------------------------------------- */
+void OLEDnoBlink(void){
 
-// This is for text that flows Left to Right
-void characterOLED::leftToRight(void)
-{
-	_displaymode |= LCD_ENTRYLEFT;
-	command(LCD_ENTRYMODESET | _displaymode);
+  _displaycontrol &= ~LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// This is for text that flows Right to Left
-void characterOLED::rightToLeft(void)
-{
-	_displaymode &= ~LCD_ENTRYLEFT;
-	command(LCD_ENTRYMODESET | _displaymode);
+/* ---------------------------------------------------------------------
+    Turn on the blinking cursor
+ --------------------------------------------------------------------- */
+void OLEDblink(void){
+
+  _displaycontrol |= LCD_BLINKON;
+  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
 }
 
-// This will 'right justify' text from the cursor
-void characterOLED::autoscroll(void)
-{
-	_displaymode |= LCD_ENTRYSHIFTINCREMENT;
-	command(LCD_ENTRYMODESET | _displaymode);
+/* ---------------------------------------------------------------------
+    These commands scroll the display without changing the RAM
+ --------------------------------------------------------------------- */
+void OLEDscrollDisplayLeft(void){
+
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
 }
 
-// This will 'left justify' text from the cursor
-void characterOLED::noAutoscroll(void)
-{
-	_displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
-	command(LCD_ENTRYMODESET | _displaymode);
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDscrollDisplayRight(void){
+
+  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
 }
 
-// Allows us to fill the first 8 CGRAM locations
-// with custom characters
-void characterOLED::createChar(uint8_t location, uint8_t charmap[])
-{
-	location &= 0x7; // we only have 8 locations 0-7
-	command(LCD_SETCGRAMADDR | (location << 3));
-	for (int i=0; i<8; i++)
-	{
-		write(charmap[i]);
-	}
+/* ---------------------------------------------------------------------
+    This is for text that flows Left to Right
+ --------------------------------------------------------------------- */
+void OLEDleftToRight(void){
+
+  _displaymode |= LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
 }
 
-/*********** mid level commands, for sending data/cmds */
+/* ---------------------------------------------------------------------
+    This is for text that flows Right to Left
+ --------------------------------------------------------------------- */
+void OLEDrightToLeft(void){
 
-inline void characterOLED::command(uint8_t value)
-{
-	send(value, LOW);
-	waitForReady();
+  _displaymode &= ~LCD_ENTRYLEFT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
 }
 
-inline size_t characterOLED::write(uint8_t value)
-{
-	send(value, HIGH);
-	waitForReady();
+/* ---------------------------------------------------------------------
+    This will 'right justify' text from the cursor
+ --------------------------------------------------------------------- */
+void OLEDautoscroll(void){
+
+  _displaymode |= LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
 }
 
-/************ low level data pushing commands **********/
+/* ---------------------------------------------------------------------
+    This will 'left justify' text from the cursor
+ --------------------------------------------------------------------- */
+void OLEDnoAutoscroll(void){
 
-// write either command or data
-void characterOLED::send(uint8_t value, uint8_t mode)
-{
-	digitalWrite(rs_pin, mode);
-	pinMode(_rw_pin, OUTPUT);
-	digitalWrite(_rw_pin, LOW);
-	
-	write4bits(value>>4);
-	write4bits(value);
+  _displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
+  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
 }
 
-void characterOLED::pulseEnable(void)
-{
-	digitalWrite(_enable_pin, HIGH);
-	_delay_us(50);    // Timing Spec?
-	digitalWrite(_enable_pin, LOW);
+/* ---------------------------------------------------------------------
+    Allows us to fill the first 8 CGRAM locations
+    with custom characters
+ --------------------------------------------------------------------- */
+void OLEDcreateChar(uint8_t location, uint8_t charmap[]){
+
+  location &= 0x7; // we only have 8 locations 0-7
+  OLEDcommand(LCD_SETCGRAMADDR | (location << 3));
+  for (int i=0; i<8; i++){
+    OLEDwriteC(charmap[i]);
+  }
 }
 
-void characterOLED::write4bits(uint8_t value)
-{
-	for (int i = 0; i < 4; i++)
-	{
-		pinMode(_data_pins[i], OUTPUT);
-		digitalWrite(_data_pins[i], (value >> i) & 0x01);
-	}
-	_delay_us(50); // Timing spec?
-	pulseEnable();
+/* ---------------------------------------------------------------------
+    send a command to the display
+ --------------------------------------------------------------------- */
+inline void OLEDcommand(uint8_t value){
+
+  OLEDsend(value, LOW);
+  OLEDwaitForReady();
 }
 
-// Poll the busy bit until it goes LOW
-void characterOLED::waitForReady(void)
-{
-	unsigned char busy = 1;
-	pinMode(_busy_pin, INPUT);
-	digitalWrite(rs_pin, LOW);
-	digitalWrite(_rw_pin, HIGH);
-	do
-	{
-		digitalWrite(_enable_pin, LOW);
-		digitalWrite(_enable_pin, HIGH);
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+inline size_t OLEDwriteC(uint8_t value){
 
-		_delay_us(10);
-		busy = digitalRead(_busy_pin);
-		digitalWrite(_enable_pin, LOW);
-		
-		pulseEnable();		// get remaining 4 bits, which are not used.
-	}
-	while(busy);
-	
-	pinMode(_busy_pin, OUTPUT);
-	digitalWrite(_rw_pin, LOW);
+  OLEDsend(value, HIGH);
+  OLEDwaitForReady();
 }
 
-size_t characterOLED::print(const char str[])
-{
-	return write(str);
+/* ---------------------------------------------------------------------
+    write either command or data
+ --------------------------------------------------------------------- */
+void OLEDsend(uint8_t value, uint8_t mode){
+
+  OLEDdigitalWrite(rs_pin, mode);
+  OLEDpinMode(_rw_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+
+  OLEDwrite4bits(value >> 4);
+  OLEDwrite4bits(value);
 }
 
-size_t characterOLED::print(char c)
-{
-	return write(c);
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDpulseEnable(void){
+
+  OLEDdigitalWrite(_enable_pin, HIGH);
+  _delay_us(50);    // TODO: Timing Spec?
+  OLEDdigitalWrite(_enable_pin, LOW);
 }
 
-size_t characterOLED::write(const uint8_t *buffer, size_t size)
-{
-	size_t n = 0;
-	while (size--) {
-		n += write(*buffer++);
-	}
-	return n;
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+void OLEDwrite4bits(uint8_t value){
+
+  for(int i = 0; i < 4; i++){
+    OLEDpinMode(_data_pins[i], OUTPUT);
+    OLEDdigitalWrite(_data_pins[i], (value >> i) & 0x01);
+  }
+
+  _delay_us(50); // Timing spec?
+  OLEDpulseEnable();
 }
 
-size_t characterOLED::write(const char *str) {
-	if (str == NULL) return 0;
-	return write((const uint8_t *)str, strlen(str));
+/* ---------------------------------------------------------------------
+    Poll the busy bit until it goes LOW
+ --------------------------------------------------------------------- */
+void OLEDwaitForReady(void){
+
+  unsigned char busy = 1;
+  OLEDpinMode(_busy_pin, INPUT);
+  OLEDdigitalWrite(rs_pin, LOW);
+  OLEDdigitalWrite(_rw_pin, HIGH);
+
+  do{
+    OLEDdigitalWrite(_enable_pin, LOW);
+    OLEDdigitalWrite(_enable_pin, HIGH);
+
+    _delay_us(10);
+    busy = OLEDdigitalRead(_busy_pin);
+    OLEDdigitalWrite(_enable_pin, LOW);
+
+    OLEDpulseEnable();    // get remaining 4 bits, which are not used.
+  } while(busy);
+
+  OLEDpinMode(_busy_pin, OUTPUT);
+  OLEDdigitalWrite(_rw_pin, LOW);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+size_t OLEDprintCC(const char str[]){
+
+  return OLEDwriteCC(str);
+}
+
+/* ---------------------------------------------------------------------
+    unknown
+ --------------------------------------------------------------------- */
+size_t OLEDprintC(char c){
+
+  return OLEDwriteC(c);
+}
+
+/* ---------------------------------------------------------------------
+    send a string with length to the display
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCCC(const uint8_t *buffer, size_t size){
+
+  size_t n = 0;
+  while(size--){
+    n += OLEDwriteC(*buffer++);
+  }
+
+  return n;
+}
+
+/* ---------------------------------------------------------------------
+    send a string to the display
+ --------------------------------------------------------------------- */
+size_t OLEDwriteCC(const char *str){
+
+  if(str == NULL){
+    return 0;
+  }
+
+  return OLEDwriteCCC((const uint8_t *)str, strlen(str));
 }
 

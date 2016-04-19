@@ -101,23 +101,23 @@
 
 void OLEDinit(uint8_t ver);
 
-void OLEDbegin(uint8_t cols, uint8_t rows);
+void OLEDbegin(uint8_t cols, uint8_t lines);
 
-void OLEDclear();
-void OLEDhome();
+void OLEDclear(void);
+void OLEDhome(void);
 
-void OLEDnoDisplay();
-void OLEDdisplay();
-void OLEDnoBlink();
-void OLEDblink();
-void OLEDnoCursor();
-void OLEDcursor();
-void OLEDscrollDisplayLeft();
-void OLEDscrollDisplayRight();
-void OLEDleftToRight();
-void OLEDrightToLeft();
-void OLEDautoscroll();
-void OLEDnoAutoscroll();
+void OLEDnoDisplay(void);
+void OLEDdisplay(void);
+void OLEDnoBlink(void);
+void OLEDblink(void);
+void OLEDnoCursor(void);
+void OLEDcursor(void);
+void OLEDscrollDisplayLeft(void);
+void OLEDscrollDisplayRight(void);
+void OLEDleftToRight(void);
+void OLEDrightToLeft(void);
+void OLEDautoscroll(void);
+void OLEDnoAutoscroll(void);
 void OLEDdigitalWrite(uint8_t pin,uint8_t value);
 uint8_t OLEDdigitalRead(uint8_t pin);
 
@@ -136,8 +136,8 @@ size_t OLEDwriteCC(const char *str);
 
 void OLEDsend(uint8_t, uint8_t);
 void OLEDwrite4bits(uint8_t);
-void OLEDpulseEnable();
-void OLEDwaitForReady();
+void OLEDpulseEnable(void);
+void OLEDwaitForReady(void);
 void OLEDpinMode(uint8_t pin, uint8_t mode);
 
 

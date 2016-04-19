@@ -29,28 +29,25 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#ifndef PARSER_SERIAL_BUFFERSIZE
-  #define PARSER_SERIAL_BUFFERSIZE 64            /* should be enough */
+
+#ifndef SERIAL_BUFFERSIZE
+  #define SERIAL_BUFFERSIZE 64            /* should be enough */
 #endif
 
-#ifndef PARSER_NUMBER_OF_PARAMETERS
-  #define PARSER_NUMBER_OF_PARAMETERS 10         /* amount of parameters to be kept */
+#ifndef NUMBER_OF_PARAMETERS
+  #define NUMBER_OF_PARAMETERS 10         /* amount of parameters to be kept */
 #endif
 
-#ifndef PARSER_PARAMETER_LENGTH
-  #define PARSER_PARAMETER_LENGTH 20             /* max length of a single parameter */
+#ifndef PARAMETER_LENGTH
+  #define PARAMETER_LENGTH 20             /* max length of a single parameter */
 #endif
 
-#ifndef PARSER_ALLOWED_CMD_DELIMITERS
-  #define PARSER_ALLOWED_CMD_DELIMITERS " ,;\t"  /* for cmd/parameter separation */
+#ifndef ALLOWED_CMD_DELIMITERS
+  #define ALLOWED_CMD_DELIMITERS " ,;\t"  /* for cmd/parameter separation */
 #endif
 
-#ifndef PARSER_TOTAL_NUMBER_OF_COMMANDS
-  #define PARSER_TOTAL_NUMBER_OF_COMMANDS 1
-#endif
-
-#ifndef PARSER_UART_DATA_REGISTER
-  #define PARSER_UART_DATA_REGISTER UDR0
+#ifndef TOTAL_NUMBER_OF_COMMANDS
+  #define TOTAL_NUMBER_OF_COMMANDS 1
 #endif
 
 
@@ -58,11 +55,11 @@
     function prototypes
 ====================================================================== */
 
-void initCommandParser(void);
+//void initUSART(void);
 void copyRXstring(void);
 void sendChar(char c);
+void sendText(char *c);
 uint8_t parseCommand(void);
-
 
 
 

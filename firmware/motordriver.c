@@ -24,7 +24,7 @@
 #include <stdint.h>
 #include <math.h>
 
-//#include "lcd-routines.h"
+#include "libavrparse.h"
 #include "characterOLED.h"
 
 /* ---------------------------------------------------------------------
@@ -350,7 +350,7 @@ char **commandParam = NULL;
   necessary functions.
 */
 
-ADD_COMMAND(0,  "\0" ,              0, 0x80)  /* no command*/
+ADD_COMMAND(0,  "\0",               0, 0x80)  /* no command*/
 ADD_COMMAND(1,  "*RST\0",           0, 0x81)  /* reset */
 ADD_COMMAND(2,  "*IDN?\0",          0, 0x82)  /* get IDN */
 ADD_COMMAND(3,  "*IDN\0",           1, 0x83)  /* set IDN */
@@ -575,17 +575,17 @@ progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 /* ---------------------------------------------------------------------
     function prototypes
  --------------------------------------------------------------------- */
-/* initializer */
+
 void initDataStructs(void);
 void initUSART(void);
 //void initADC(void);
+void initBuffers(void);
 void initMotorDelayTimer(void);
 
-/* functionality */
-void sendChar(char c);
-void sendText(char *c);
-void prepareReset();
-void setMotorState(uint8_t motor, uint8_t status);
+//void sendChar(char c);
+//void sendText(char *c);
+void prepareReset(void);
+
 void moveMotorRelative(uint8_t mot, int16_t steps);
 void defineOpticalZeroPosition(uint8_t i, int16_t step);
 void motorZeroRun(uint8_t i);
@@ -593,16 +593,10 @@ uint16_t getADCvalue(uint8_t sensPin);
 void saveConfigToEEPROM(void);
 void loadConfigFromEEPROM(void);
 
-void lcd_init(void);
-static void lcd_enable(void);
-static void lcd_out(uint8_t data);
-void lcd_data(uint8_t data);
-void lcd_command(uint8_t data);
-void lcd_clear(void);
-void lcd_home(void);
-void lcd_setcursor(uint8_t x, uint8_t y);
-void lcd_string(const char *data);
-void lcd_generatechar(uint8_t code, const uint8_t *data);
+void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity);
+void updateLEDs(void);
+void changeMotorButtonLED(uint8_t motor, uint8_t enable);
+void updateMotorButtonLEDs(void);
 
 void degreeToSteps(uint8_t mot, double degree, double multiply);
 double stepsToDegree(uint8_t mot, int16_t steps);
@@ -615,13 +609,44 @@ void changeDisplayMenu(uint8_t i);
 void updateDisplayChangeValues(uint8_t thisMenu);
 void updateMenu(void);
 
+void initIIC(void);
+void IICstart(void);
+void IICstop(void);
+void IICsendByte(uint8_t data);
+uint8_t IICreadACK(void);
+uint8_t IICreadNACK(void);
+uint8_t IICgetStatus(void);
+void IICwrite(uint8_t addr, uint8_t* data, uint8_t numDat);
+void IICread(uint8_t addr, uint8_t* data, uint8_t numDat);
 
+uint8_t getPortExpanderAddress(uint8_t mot);
+uint8_t getDACAddress(uint8_t mot);
+void initPortExpander(uint8_t addr);
+void writePortExpanderRegister(uint8_t addr, uint8_t reg, uint8_t val);
+uint8_t readPortExpanderRegister(uint8_t addr, uint8_t reg);
+
+uint8_t reverseBitOrder(uint8_t b);
+
+void setSubSteps(uint8_t mot, uint8_t steps);
+uint8_t getSubSteps(uint8_t mot);
+void setMotorState(uint8_t mot, uint8_t state);
+void setMotorDecay(uint8_t mot, uint8_t state);
+void resetMotorLogic(uint8_t mot);
+void setMotorSleep(uint8_t mot);
+void wakeMotorUp(uint8_t mot);
+uint8_t getMotorSens(uint8_t mot, uint8_t sens);
+
+void initDAC(uint8_t mot);
+void setMotorCurrent(uint8_t mot, float curr);
+float getMotorCurrent(uint8_t mot);
+
+void updateIICvalues(void);
 
 void initManualOperatingButtons(void);
 uint8_t getButtonEvent(void);
 int8_t getRotaryEncoderEvent(void);
 
-uint8_t parseCommand(void);
+//uint8_t parseCommand(void);
 void  commandMoveAbs(char* param0, char* param1, char* param2);
 void  commandMoveRel(char* param0, char* param1, char* param2);
 void  commandEnable(char* param0, char* param1);
@@ -645,12 +670,14 @@ void  commandEnableForbiddenZone(char* param0, char* param1);
 void  commandSetProgStep(char* param0, char* param1, char* param2,
                          char* param3, char* param4, char* param5);
 void commandGetMotorState(char* param0);
+char* commandGetMotorCurrent(char* param0);
+void commandSetMotorCurrent(char* param0, char* param1);
+char* commandGetMotorDecay(char* param0);
+void commandSetMotorDecay(char* param0, char* param1);
+char* commandIsConnected(char* param0);
+
 void commandDebugReadout(void);
 
-
-uint8_t reverseBitOrder(uint8_t b);
-
-uint8_t getMotorSens(uint8_t mot, uint8_t sens);
 
 
 /* =====================================================================
@@ -852,7 +879,7 @@ void sendText(char *c){
 /* ---------------------------------------------------------------------
     some necessary things to do for a reset
  --------------------------------------------------------------------- */
-void prepareReset(){
+void prepareReset(void){
 
   /* turn off all motors */
   /*
@@ -958,7 +985,7 @@ void motorZeroRun(uint8_t i){
 
   uint16_t keepWaitTime = 0;
   double stepsPerRound = 0.0f;
-  uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
+  //uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
 
   if(forbiddenZone[i].active){
@@ -1141,616 +1168,6 @@ void loadConfigFromEEPROM(void){
 }
 
 
-
-
-/* =====================================================================
-    Display subsystem
-
-  code to communicate with the LCD display. It is based on a Hitachi
-  LCD driver chip HD44780.
-
-  This display here in use is
-  - 2 lines with 16 characters each
-  - 5x7 dots per character
-  - driven in 4-bit-mode
-====================================================================== */
-
-
-/* ---------------------------------------------------------------------
-    initialize OLED display
- --------------------------------------------------------------------- */
-void OLEDinit(uint8_t ver){
-
-  _oled_ver = ver;
-  if(_oled_ver != OLED_V1 && _oled_ver != OLED_V2){
-    _oled_ver = OLED_V2; // if error, default to newer version
-  }
-
-  _data_pins[0] = data4;
-  _data_pins[1] = data5;
-  _data_pins[2] = data6;
-  _data_pins[3] = data7;
-
-  OLEDpinMode(rs_pin, OUTPUT);
-  OLEDpinMode(_rw_pin, OUTPUT);
-  OLEDpinMode(_enable_pin, OUTPUT);
-
-  _displayfunction = LCD_FUNCTIONSET | LCD_4BITMODE;
-
-  OLEDbegin(16, 2);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDpinMode(uint8_t pin, uint8_t mode){
-
-  if (mode) {
-    LCD_DDR |= (1 << pin);
-  } //output
-  else {
-    LCD_DDR &= ~(1 << pin);
-  } //input
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDdigitalWrite(uint8_t pin,uint8_t value){
-
-  if (value == LOW) {
-    LCD_PORT &= ~(1 << pin);
-  } //If low, write 0
-  else {
-    LCD_PORT |= (1 << pin);
-  } //if high, write 1
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-uint8_t OLEDdigitalRead(uint8_t pin){
-
-  return (LCD_PIN & (1 << pin));
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDbegin(uint8_t cols, uint8_t lines){
-
-  _numlines = lines;
-  _currline = 0;
-
-  OLEDpinMode(rs_pin, OUTPUT);
-  OLEDpinMode(_rw_pin, OUTPUT);
-  OLEDpinMode(_enable_pin, OUTPUT);
-
-  OLEDdigitalWrite(rs_pin, LOW);
-  OLEDdigitalWrite(_enable_pin, LOW);
-  OLEDdigitalWrite(_rw_pin, LOW);
-
-  _delay_us(50000); // give it some time to power up
-
-  // Now we pull both RS and R/W low to begin commands
-  for(int i = 0; i < 4; i++){
-    OLEDpinMode(_data_pins[i], OUTPUT);
-    OLEDdigitalWrite(_data_pins[i], LOW);
-  }
-
-  // Initialization sequence is not quite as documented by Winstar.
-  // Documented sequence only works on initial power-up.
-  // An additional step of putting back into 8-bit mode first is
-  // required to handle a warm-restart.
-  //
-  // In the data sheet, the timing specs are all zeros(!).  These have been tested to
-  // reliably handle both warm & cold starts.
-
-  // 4-Bit initialization sequence from Technobly
-  OLEDwrite4bits(0x03); // Put back into 8-bit mode
-  _delay_us(5000);
-  if(_oled_ver == OLED_V2){  // only run extra command for newer displays
-    OLEDwrite4bits(0x08);
-    _delay_us(5000);
-  }
-
-  OLEDwrite4bits(0x02); // Put into 4-bit mode
-  _delay_us(5000);
-  OLEDwrite4bits(0x02);
-  _delay_us(5000);
-  OLEDwrite4bits(0x08);
-  _delay_us(5000);
-
-  OLEDcommand(0x08);  // Turn Off
-  _delay_us(5000);
-  OLEDcommand(0x01);  // Clear Display
-  _delay_us(5000);
-  OLEDcommand(0x06);  // Set Entry Mode
-  _delay_us(5000);
-  OLEDcommand(0x02);  // Home Cursor
-  _delay_us(5000);
-  OLEDcommand(0x0C);  // Turn On - enable cursor & blink
-  _delay_us(5000);
-}
-
-/* ---------------------------------------------------------------------
-    clear display
- --------------------------------------------------------------------- */
-void OLEDclear(void){
-
-  OLEDcommand(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
-  //  _delay_us(2000);  // this command takes a long time!
-}
-
-/* ---------------------------------------------------------------------
-    set cursor to home position
- --------------------------------------------------------------------- */
-void OLEDhome(void){
-  OLEDcommand(LCD_RETURNHOME);  // set cursor position to zero
-  //  _delay_us(2000);  // this command takes a long time!
-}
-
-/* ---------------------------------------------------------------------
-    set cursor to x-y-position (home = 0,0)
- --------------------------------------------------------------------- */
-void OLEDsetCursor(uint8_t col, uint8_t row){
-
-  uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
-  if (row >= _numlines){
-    row = 0;  //write to first line if out off bounds
-  }
-
-  OLEDcommand(LCD_SETDDRAMADDR | (col + row_offsets[row]));
-}
-
-/* ---------------------------------------------------------------------
-    Turn the display on/off (quickly)
- --------------------------------------------------------------------- */
-void OLEDnoDisplay(void){
-
-  _displaycontrol &= ~LCD_DISPLAYON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDdisplay(){
-
-  _displaycontrol |= LCD_DISPLAYON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    Turns the underline cursor off
- --------------------------------------------------------------------- */
-void OLEDnoCursor(void){
-
-  _displaycontrol &= ~LCD_CURSORON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    Turns the underline cursor on
- --------------------------------------------------------------------- */
-void OLEDcursor(){
-
-  _displaycontrol |= LCD_CURSORON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    Turn off the blinking cursor
- --------------------------------------------------------------------- */
-void OLEDnoBlink(void){
-
-  _displaycontrol &= ~LCD_BLINKON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    Turn on the blinking cursor
- --------------------------------------------------------------------- */
-void OLEDblink(void){
-
-  _displaycontrol |= LCD_BLINKON;
-  OLEDcommand(LCD_DISPLAYCONTROL | _displaycontrol);
-}
-
-/* ---------------------------------------------------------------------
-    These commands scroll the display without changing the RAM
- --------------------------------------------------------------------- */
-void OLEDscrollDisplayLeft(void){
-
-  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDscrollDisplayRight(void){
-
-  OLEDcommand(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
-}
-
-/* ---------------------------------------------------------------------
-    This is for text that flows Left to Right
- --------------------------------------------------------------------- */
-void OLEDleftToRight(void){
-
-  _displaymode |= LCD_ENTRYLEFT;
-  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
-}
-
-/* ---------------------------------------------------------------------
-    This is for text that flows Right to Left
- --------------------------------------------------------------------- */
-void OLEDrightToLeft(void){
-
-  _displaymode &= ~LCD_ENTRYLEFT;
-  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
-}
-
-/* ---------------------------------------------------------------------
-    This will 'right justify' text from the cursor
- --------------------------------------------------------------------- */
-void OLEDautoscroll(void){
-
-  _displaymode |= LCD_ENTRYSHIFTINCREMENT;
-  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
-}
-
-/* ---------------------------------------------------------------------
-    This will 'left justify' text from the cursor
- --------------------------------------------------------------------- */
-void OLEDnoAutoscroll(void){
-
-  _displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
-  OLEDcommand(LCD_ENTRYMODESET | _displaymode);
-}
-
-/* ---------------------------------------------------------------------
-    Allows us to fill the first 8 CGRAM locations
-    with custom characters
- --------------------------------------------------------------------- */
-void OLEDcreateChar(uint8_t location, uint8_t charmap[]){
-
-  location &= 0x7; // we only have 8 locations 0-7
-  OLEDcommand(LCD_SETCGRAMADDR | (location << 3));
-  for (int i=0; i<8; i++){
-    OLEDwriteC(charmap[i]);
-  }
-}
-
-/* ---------------------------------------------------------------------
-    send a command to the display
- --------------------------------------------------------------------- */
-inline void OLEDcommand(uint8_t value){
-
-  OLEDsend(value, LOW);
-  OLEDwaitForReady();
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-inline size_t OLEDwriteC(uint8_t value){
-
-  OLEDsend(value, HIGH);
-  OLEDwaitForReady();
-}
-
-/* ---------------------------------------------------------------------
-    write either command or data
- --------------------------------------------------------------------- */
-void OLEDsend(uint8_t value, uint8_t mode){
-
-  OLEDdigitalWrite(rs_pin, mode);
-  OLEDpinMode(_rw_pin, OUTPUT);
-  OLEDdigitalWrite(_rw_pin, LOW);
-
-  OLEDwrite4bits(value >> 4);
-  OLEDwrite4bits(value);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDpulseEnable(void){
-
-  OLEDdigitalWrite(_enable_pin, HIGH);
-  _delay_us(50);    // TODO: Timing Spec?
-  OLEDdigitalWrite(_enable_pin, LOW);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-void OLEDwrite4bits(uint8_t value){
-
-  for(int i = 0; i < 4; i++){
-    OLEDpinMode(_data_pins[i], OUTPUT);
-    OLEDdigitalWrite(_data_pins[i], (value >> i) & 0x01);
-  }
-
-  _delay_us(50); // Timing spec?
-  OLEDpulseEnable();
-}
-
-/* ---------------------------------------------------------------------
-    Poll the busy bit until it goes LOW
- --------------------------------------------------------------------- */
-void OLEDwaitForReady(void){
-
-  unsigned char busy = 1;
-  OLEDpinMode(_busy_pin, INPUT);
-  OLEDdigitalWrite(rs_pin, LOW);
-  OLEDdigitalWrite(_rw_pin, HIGH);
-
-  do{
-    OLEDdigitalWrite(_enable_pin, LOW);
-    OLEDdigitalWrite(_enable_pin, HIGH);
-
-    _delay_us(10);
-    busy = OLEDdigitalRead(_busy_pin);
-    OLEDdigitalWrite(_enable_pin, LOW);
-
-    OLEDpulseEnable();    // get remaining 4 bits, which are not used.
-  } while(busy);
-
-  OLEDpinMode(_busy_pin, OUTPUT);
-  OLEDdigitalWrite(_rw_pin, LOW);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-size_t OLEDprintCC(const char str[]){
-
-  return OLEDwriteCC(str);
-}
-
-/* ---------------------------------------------------------------------
-    unknown
- --------------------------------------------------------------------- */
-size_t OLEDprintC(char c){
-
-  return OLEDwriteC(c);
-}
-
-/* ---------------------------------------------------------------------
-    send a string with length to the display
- --------------------------------------------------------------------- */
-size_t OLEDwriteCCC(const uint8_t *buffer, size_t size){
-
-  size_t n = 0;
-  while(size--){
-    n += OLEDwriteC(*buffer++);
-  }
-
-  return n;
-}
-
-/* ---------------------------------------------------------------------
-    send a string to the display
- --------------------------------------------------------------------- */
-size_t OLEDwriteCC(const char *str){
-
-  if(str == NULL){
-    return 0;
-  }
-
-  return OLEDwriteCCC((const uint8_t *)str, strlen(str));
-}
-
-
-
-#if 0
-
-/* Interface to a HD44780 compatible LCD in 4-Bit-mode
- * http://www.mikrocontroller.net/articles/HD44780
- * http://www.mikrocontroller.net/articles/AVR-GCC-Tutorial/LCD-Ansteuerung
- *
- * Pinout is defined in lcd-routines.h
- *
- */
-
-/* ---------------------------------------------------------------------
-   produce enable pulse
- --------------------------------------------------------------------- */
-static void lcd_enable(void){
-
-  LCD_PORT |= (1<<LCD_EN);     /* set ENABLE to 1 */
-  _delay_us(LCD_ENABLE_US);
-  LCD_PORT &= ~(1<<LCD_EN);    /* set ENABLE to 0 */
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   send 4 bit to LCD
- --------------------------------------------------------------------- */
-static void lcd_out(uint8_t data){
-
-  data &= 0xF0;                       /* mask upper 4 bits */
-
-  LCD_PORT &= ~(0xF0>>(4-LCD_DB));    /* delete mask */
-  LCD_PORT |= (data>>(4-LCD_DB));     /* set bits */
-  lcd_enable();
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   initializes the display
- --------------------------------------------------------------------- */
-void lcd_init(void){
-
-  /* set uses data-lines to output */
-  uint8_t pins = (0x0F << LCD_DB) |
-                 (1<<LCD_RS) |
-                 (1<<LCD_EN);
-  LCD_DDR |= pins;
-
-  /* init output pins to 0 */
-  LCD_PORT &= ~pins;
-
-  /* wait until display is ready */
-  _delay_ms(LCD_BOOTUP_MS);
-
-  /* soft reset: has to be done 3 times */
-  lcd_out(LCD_SOFT_RESET);
-  _delay_ms(LCD_SOFT_RESET_MS1);
-
-  lcd_enable();
-  _delay_ms(LCD_SOFT_RESET_MS2);
-
-  lcd_enable();
-  _delay_ms(LCD_SOFT_RESET_MS3);
-
-  /* enable 4-bit-mode */
-  lcd_out(LCD_SET_FUNCTION | LCD_FUNCTION_4BIT);
-  _delay_ms(LCD_SET_4BITMODE_MS);
-
-  /* enable 4-bit-mode with 2 rows and 5x7 pixel per character */
-  lcd_command(LCD_SET_FUNCTION |
-              LCD_FUNCTION_4BIT |
-              LCD_FUNCTION_2LINE |
-              LCD_FUNCTION_5X7);
-
-  /* Display: ON, Cursor: OFF, blink cursor: OFF */
-  lcd_command(LCD_SET_DISPLAY |
-              LCD_DISPLAY_ON |
-              LCD_CURSOR_OFF |
-              LCD_BLINKING_OFF);
-
-  /* increment cursor, no scrolling */
-  lcd_command(LCD_SET_ENTRY |
-              LCD_ENTRY_INCREASE |
-              LCD_ENTRY_NOSHIFT);
-
-  lcd_clear();
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   send a byte to the display
- --------------------------------------------------------------------- */
-void lcd_data(uint8_t data){
-
-  LCD_PORT |= (1<<LCD_RS);    /* set reset to 1 */
-
-  lcd_out(data);            /* send upper nibble */
-  lcd_out(data<<4);         /* send lower nibble */
-
-  _delay_us(LCD_WRITEDATA_US);
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   send a command to the display
- --------------------------------------------------------------------- */
-void lcd_command(uint8_t data){
-
-  LCD_PORT &= ~(1<<LCD_RS);    /* set reset to 0 */
-
-  lcd_out( data );             /* send upper nibble */
-  lcd_out( data<<4 );          /* send lower nibble */
-
-  _delay_us( LCD_COMMAND_US );
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   send command to clear all display contents
- --------------------------------------------------------------------- */
-void lcd_clear(void){
-
-  lcd_command( LCD_CLEAR_DISPLAY );
-  _delay_ms( LCD_CLEAR_DISPLAY_MS );
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   set the cursor to home position
- --------------------------------------------------------------------- */
-void lcd_home(void){
-
-  lcd_command( LCD_CURSOR_HOME );
-  _delay_ms( LCD_CURSOR_HOME_MS );
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   set cursor to specific position (x=col, y=row)
- --------------------------------------------------------------------- */
-void lcd_setcursor(uint8_t x, uint8_t y){
-
-  uint8_t data;
-
-  switch(y){
-    case 1:    /* 1st row */
-      data = LCD_SET_DDADR + LCD_DDADR_LINE1 + x;
-      break;
-
-    case 2:    /* 2nd row */
-      data = LCD_SET_DDADR + LCD_DDADR_LINE2 + x;
-      break;
-
-    case 3:    /* 3rd row */
-      data = LCD_SET_DDADR + LCD_DDADR_LINE3 + x;
-      break;
-
-    case 4:    /* 4th row */
-      data = LCD_SET_DDADR + LCD_DDADR_LINE4 + x;
-      break;
-
-    default:
-      return;  /* unknown row */
-  }
-
-  lcd_command(data);
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   send a string to the display
- --------------------------------------------------------------------- */
-void lcd_string(const char *data){
-
-  while(*data != '\0'){
-    lcd_data(*data++);
-  }
-
-  return;
-}
-
-/* ---------------------------------------------------------------------
-   generate a user defined character into LCD's ROM
- --------------------------------------------------------------------- */
-void lcd_generatechar(uint8_t code, const uint8_t *data){
-
-  uint8_t i = 0;
-  /* set start position of character */
-  lcd_command(LCD_SET_CGADR | (code<<3));
-
-  /* transfer bit pattern */
-  for (i = 0; i < 8; i++){
-    lcd_data(data[i]);
-  }
-
-  return;
-}
-
-
-#endif
-
 /* ---------------------------------------------------------------------
    change button LED color/intensity
  --------------------------------------------------------------------- */
@@ -1779,7 +1196,7 @@ void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity){
 void updateLEDs(void){
   
   uint16_t i = 0;
-  uint8_t  j = 0;
+  //uint8_t  j = 0;
   uint8_t data = 0;
   uint8_t outbyte = 0;
 
@@ -3207,7 +2624,7 @@ void setMotorCurrent(uint8_t mot, float curr){
 
   uint8_t addr = 0;
   uint8_t val = 0;
-  uint16_t reg = 0;
+  //uint16_t reg = 0;
 
   if(curr < 0.0){
     curr = 0.0;
@@ -3413,7 +2830,7 @@ uint8_t parseCommand(void){
   uint8_t commandCode = 0x80; /* initialize with "no command" */
   uint8_t noOfOpts = 0;
   uint8_t i = 0;
-  uint8_t j = 0;
+  //uint8_t j = 0;
   command *cmdPtr;
   char *token;
 
@@ -3476,7 +2893,7 @@ void commandMoveAbs(char* param0, char* param1, char* param2){
     radiansToSteps(i, posDiff, 1.0);
   }
   else{
-    sendText("ERROR: else");
+    sendText("ERROR: unknown unit");
   }
 
   return;
@@ -3498,11 +2915,14 @@ void commandMoveRel(char* param0, char* param1, char* param2){
   if(strcmp(param2, "steps") == 0){
     motor[i].desiredPosition += (int16_t)strtol(param1, (char **)NULL, 10);
   }
-  if(strcmp(param2, "deg") == 0){
+  else if(strcmp(param2, "deg") == 0){
     degreeToSteps(i, atof(param1), 1.0f);
   }
-  if(strcmp(param2, "pi") == 0){
+  else if(strcmp(param2, "pi") == 0){
     radiansToSteps(i, atof(param1), 1.0f);
+  }
+  else{
+    sendText("ERROR: unknown unit");
   }
 
   return;
@@ -3866,7 +3286,7 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
                                                       *motor[i].subSteps));
 
     if(waitTime < 1){
-      sprintf(txString.buffer, "err: time too short", waitTime);
+      sprintf(txString.buffer, "err: time too short");
       sendText(txString.buffer);
       return;
     }
@@ -4027,7 +3447,7 @@ void commandSetProgStep(char* param0, char* param1, char* param2,
 void commandGetMotorState(char* param0){
 
   uint8_t i = 0;
-  uint8_t val = 0;
+  //uint8_t val = 0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
