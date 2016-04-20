@@ -37,6 +37,8 @@
 #define LCD_FUNCTIONSET 0x28
 #define LCD_SETCGRAMADDR 0x40
 #define LCD_SETDDRAMADDR 0x80
+#define LCD_PWRON 0x17
+#define LCD_PWROFF 0x13
 
 // flags for display entry mode
 #define LCD_ENTRYRIGHT 0x00
@@ -117,6 +119,7 @@ void OLEDleftToRight(void);
 void OLEDrightToLeft(void);
 void OLEDautoscroll(void);
 void OLEDnoAutoscroll(void);
+void OLEDbrightness(uint8_t bright);
 void OLEDdigitalWrite(uint8_t pin,uint8_t value);
 uint8_t OLEDdigitalRead(uint8_t pin);
 

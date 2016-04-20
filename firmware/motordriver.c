@@ -385,7 +385,7 @@ ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden 
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* is motor enabled or not */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
-ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* TESTCOMMAND */
+ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* set LED colors */
 
 ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
 ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
@@ -394,7 +394,9 @@ ADD_COMMAND(35, "SETDECAY\0",       2, 0xA3)  /* sets the decay for a motor */
 
 ADD_COMMAND(36, "ISCON\0",          1, 0xA4)  /* is a motor connected or not */
 
-#define TOTAL_NUMBER_OF_COMMANDS 37
+ADD_COMMAND(37, "DISPLAY\0",        1, 0xA5)  /* set OLED brightness */
+
+#define TOTAL_NUMBER_OF_COMMANDS 38
 
 const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_3_,  &cmd_4_,  &cmd_5_,
@@ -408,7 +410,7 @@ const command* const commandList[] PROGMEM = {&cmd_0_,  &cmd_1_,  &cmd_2_,
                                               &cmd_27_, &cmd_28_, &cmd_29_,
                                               &cmd_30_, &cmd_31_, &cmd_32_,
                                               &cmd_33_, &cmd_34_, &cmd_35_,
-                                              &cmd_36_
+                                              &cmd_36_, &cmd_37_
                                              };
 
 /* ---------------------------------------------------------------------
@@ -3553,11 +3555,42 @@ void commandLED(char* param0, char* param1, char* param2){
   
   sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
   sendText(txString.buffer);
-
+  
   changeButtonLED(a, b, c);
   updateLEDs();
   
   return;
+}
+
+/* ---------------------------------------------------------------------
+    set display brightness
+ --------------------------------------------------------------------- */
+char* commandDisplay(char* param0){
+
+  uint8_t val = 0;
+  
+  val = (uint8_t)strtol(param0, (char **)NULL, 10);
+  
+  if(val < 0 || val > 2){
+    sprintf(txString.buffer, "err: unknown display mode");
+    sendText(txString.buffer);
+  }
+  else{
+    if(val == 0){ //turn OLED off
+      OLEDnoDisplay();
+      OLEDbrightness(1);
+    }
+    else if(val == 1){ //turn OLED on and set brightness to dim
+      OLEDbrightness(0);
+      OLEDdisplay();
+    }
+    else{ //turn OLED on and set brightness to bright
+      OLEDbrightness(1);
+      OLEDdisplay();
+    }
+  }
+
+  return txString.buffer;
 }
 
 /* =====================================================================
@@ -4077,6 +4110,10 @@ RESET:
         
       case 0xA4:    /* ISCON */
         sendText(commandIsConnected(commandParam[1]));
+        break;
+        
+      case 0xA5:    /* DISPLAY */
+        sendText(commandDisplay(commandParam[1]));
         break;
 
       default:

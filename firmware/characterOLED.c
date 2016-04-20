@@ -299,6 +299,19 @@ void OLEDnoAutoscroll(void){
 }
 
 /* ---------------------------------------------------------------------
+    This will set the brightness of the OLED
+ --------------------------------------------------------------------- */
+void OLEDbrightness(uint8_t bright){
+
+  if(bright){ //bright
+    OLEDcommand(LCD_PWRON);
+  }
+  else{ //dim
+    OLEDcommand(LCD_PWROFF);
+  }
+}
+
+/* ---------------------------------------------------------------------
     Allows us to fill the first 8 CGRAM locations
     with custom characters
  --------------------------------------------------------------------- */
