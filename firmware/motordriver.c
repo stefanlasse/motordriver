@@ -223,6 +223,10 @@ typedef struct{
 #define MOTOR_MOVE_INFINITE_CW    1
 #define MOTOR_MOVE_INFINITE_CCW   2
 
+#define DECAY_MODE_SLOW           0
+#define DECAY_MODE_FAST           1
+#define DECAY_MODE_MIXED          2
+
 typedef struct{
 
   int16_t  actualPosition;         /* always in steps */
@@ -459,15 +463,18 @@ ADD_DISPLAY_TEXT(8 , "Enter\nsettings menu\0"       )
 
 ADD_DISPLAY_TEXT(9 , "                \n                \0") //dummy menu
 
-ADD_DISPLAY_TEXT(10, "Change motor\nsubstep\0"      )
-ADD_DISPLAY_TEXT(11, "Change motor\ncurrent\0"      )
-ADD_DISPLAY_TEXT(12, "Change step\nwait time\0"     )
-ADD_DISPLAY_TEXT(13, "Save current\nconfiguration\0")
-ADD_DISPLAY_TEXT(14, "Load last\nconfiguration\0"   )
+ADD_DISPLAY_TEXT(10, "Set motor\ngear ratio\0"      )
+ADD_DISPLAY_TEXT(11, "Set steps per\nfull rotation\0")
+ADD_DISPLAY_TEXT(12, "Change motor\nsubstep\0"      )
+ADD_DISPLAY_TEXT(13, "Change motor\ncurrent\0"      )
+ADD_DISPLAY_TEXT(14, "Set current\ndecay mode\0"    )
+ADD_DISPLAY_TEXT(15, "Change step\nwait time\0"     )
+ADD_DISPLAY_TEXT(16, "Save current\nconfiguration\0")
+ADD_DISPLAY_TEXT(17, "Load last\nconfiguration\0"   )
 
 
 #define NUMBER_OF_DISPLAY_MENUS 9
-#define NUMBER_OF_SETTINGS_MENUS 5
+#define NUMBER_OF_SETTINGS_MENUS 8
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -481,11 +488,14 @@ ADD_DISPLAY_TEXT(14, "Load last\nconfiguration\0"   )
 
 #define MENU_DUMMY                  9
 
-#define MENU_CHANGE_SUBSTEPS        10
-#define MENU_CHANGE_CURR            11
-#define MENU_CHANGE_WAIT_TIME       12
-#define MENU_SAVE_CONFIG            13
-#define MENU_LOAD_CONFIG            14
+#define MENU_SET_GEAR_RATIO         10
+#define MENU_SET_FULL_ROTATION      11
+#define MENU_CHANGE_SUBSTEPS        12
+#define MENU_CHANGE_CURR            13
+#define MENU_SET_DECAY_MODE         14
+#define MENU_CHANGE_WAIT_TIME       15
+#define MENU_SAVE_CONFIG            16
+#define MENU_LOAD_CONFIG            17
 
 
 /* to hold a list of menu entries */
@@ -493,7 +503,8 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_3_,  &disp_4_,  &disp_5_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
                                             &disp_9_,  &disp_10_, &disp_11_,
-                                            &disp_12_, &disp_13_, &disp_14_
+                                            &disp_12_, &disp_13_, &disp_14_,
+                                            &disp_15_, &disp_16_, &disp_17_
                                            };
 
 /* to keep information where we are in the menu */
@@ -1660,6 +1671,49 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       }
       break;
       
+    case MENU_SET_GEAR_RATIO:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        //c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        c = ' ';
+        if(menu.selectedMotor & (1 << i)){
+          c = 0x7E;
+          if(menu.fastMovingMode){
+            c = 0x3E;
+          }
+        }
+        sprintf(menu.newDisplayValue[i], "%c%.3f", c, motor[i].gearRatio);
+      }
+      break;
+      
+    case MENU_SET_FULL_ROTATION:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        //c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        c = ' ';
+        if(menu.selectedMotor & (1 << i)){
+          c = 0x7E;
+          if(menu.fastMovingMode){
+            c = 0x3E;
+          }
+        }
+        sprintf(menu.newDisplayValue[i], "%c%.0f", c, motor[i].stepsPerFullRotation);
+      }
+      break;
+
+    case MENU_SET_DECAY_MODE:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        if(motor[i].decay == DECAY_MODE_SLOW){
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "slow");
+        }
+        if(motor[i].decay == DECAY_MODE_FAST){
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "fast");
+        }
+        if(motor[i].decay == DECAY_MODE_MIXED){
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "mixed");
+        }
+      }
+      break;
+      
     case MENU_SETTINGS:
       sprintf(menu.newDisplayValue[0], "test    ");
       sprintf(menu.newDisplayValue[1], "test    ");
@@ -1734,7 +1788,7 @@ void updateMenu(void){
     //or enter MENU_SETTINGS_MODE
     if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menuPrompt == MENU_SETTINGS){
       menu.newMenuMode = MENU_SETTINGS_MODE;
-      menu.newDisplayedMenu = MENU_CHANGE_SUBSTEPS;
+      menu.newDisplayedMenu = MENU_SET_GEAR_RATIO; //first submenu, that should be displayed
     }
   }
   
@@ -2035,6 +2089,36 @@ void updateMenu(void){
             ;
           }
           break;
+          
+        case MENU_SET_GEAR_RATIO:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              if(menu.fastMovingMode){
+                motor[i].gearRatio += (rotEncVal)/10.0;
+              }
+              else{
+                motor[i].gearRatio += (rotEncVal)/1000.0;
+              }
+              motor[i].gearRatio = roundf(motor[i].gearRatio * 1000) / 1000; //round to 3 digits
+            }
+          }
+          break;
+          
+        case MENU_SET_FULL_ROTATION:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              if(menu.fastMovingMode){
+                motor[i].stepsPerFullRotation += ((int16_t)rotEncVal)*100;
+              }
+              else{
+                motor[i].stepsPerFullRotation += (int16_t)rotEncVal;
+              }
+              if(motor[i].stepsPerFullRotation < 1){
+                motor[i].stepsPerFullRotation = 1;
+              }
+            }
+          }
+          break;
 		  
         case MENU_CHANGE_CURR:
           for(i = MOTOR0; i <= MAX_MOTOR; i++){
@@ -2047,6 +2131,20 @@ void updateMenu(void){
                 motor[i].current = 2.5;
               }
               setMotorCurrent(i, motor[i].current);
+            }
+          }
+          break;
+          
+        case MENU_SET_DECAY_MODE:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              motor[i].decay += rotEncVal;
+              if(motor[i].decay < 0){
+                motor[i].decay = 2;
+              }
+              if(motor[i].decay > 2){
+                motor[i].decay = 0;
+              }
             }
           }
           break;
@@ -2326,11 +2424,11 @@ void setMotorDecay(uint8_t mot, uint8_t state){
   regval = readPortExpanderRegister(addr, GPIOA);
   iodir = readPortExpanderRegister(addr, IODIRA);
 
-  if(state == 1){ //fast decay
+  if(state == DECAY_MODE_FAST){ //fast decay
     regval |= (1<<PORTEXP_MOTOR_DECAY);
     iodir  &= ~(1<<PORTEXP_MOTOR_DECAY);
   }
-  else if(state == 2){ //mixed decay
+  else if(state == DECAY_MODE_MIXED){ //mixed decay
     iodir  |= (1<<PORTEXP_MOTOR_DECAY); //set as input so pin is "open"
   }
   else{ //slow decay
@@ -3367,15 +3465,22 @@ char* commandGetMotorDecay(char* param0){
 void commandSetMotorDecay(char* param0, char* param1){
   
   uint8_t i = 0;
+  uint8_t decay = 0;
   
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
+  decay = (uint8_t)strtol(param1, (char **)NULL, 10);
   
   if(i < MOTOR0 || i > MAX_MOTOR){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
     sendText(txString.buffer);
   }
+  if(decay < DECAY_MODE_SLOW || decay > DECAY_MODE_MIXED){
+    sprintf(txString.buffer, "err: unknown decay mode");
+    sendText(txString.buffer);
+  }
   else{
-    motor[i].decay = atof(param1);
+    //motor[i].decay = atof(param1);
+    motor[i].decay = decay;
     setMotorDecay(i, motor[i].decay);
   }
 
