@@ -22,7 +22,7 @@ motordriver.o: motordriver.c \
   c:/program\ files/winavr/lib/gcc/../../avr/include/stdio.h \
   c:\program\ files\winavr\bin\../lib/gcc/avr/4.3.3/include/stdarg.h \
   c:/program\ files/winavr/lib/gcc/../../avr/include/math.h libavrparse.h \
-  characterOLED.h
+  characterOLED.h libiic.h
 
 c:/program\ files/winavr/lib/gcc/../../avr/include/avr/io.h:
 
@@ -73,3 +73,5 @@ c:/program\ files/winavr/lib/gcc/../../avr/include/math.h:
 libavrparse.h:
 
 characterOLED.h:
+
+libiic.h:

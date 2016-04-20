@@ -6,7 +6,10 @@
 *.lst
 *.s
 *.srec
+*.sym
+*.lss
 *~
 *.pyc
 .pydevproject
 .project
+.dep

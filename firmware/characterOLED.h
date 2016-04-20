@@ -13,7 +13,6 @@
 #define F_CPU 20000000
 #endif
 
-#include <inttypes.h>
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
 #include <stdio.h>

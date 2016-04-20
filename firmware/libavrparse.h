@@ -30,6 +30,8 @@
 #include <stdint.h>
 
 
+#if 0 //the following defines are given in motordriver.c
+
 #ifndef SERIAL_BUFFERSIZE
   #define SERIAL_BUFFERSIZE 64            /* should be enough */
 #endif
@@ -48,6 +50,8 @@
 
 #ifndef TOTAL_NUMBER_OF_COMMANDS
   #define TOTAL_NUMBER_OF_COMMANDS 1
+#endif
+
 #endif
 
 

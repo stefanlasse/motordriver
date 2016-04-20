@@ -35,6 +35,7 @@ TARGET = motordriver
 # List C source files here. (C dependencies are automatically generated.)
 SRC = $(TARGET).c
 SRC += characterOLED.c
+SRC += libiic.c
 
 
 # List Assembler source files here.

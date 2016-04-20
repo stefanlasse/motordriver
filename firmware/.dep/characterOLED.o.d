@@ -1,7 +1,7 @@
 characterOLED.o: characterOLED.c characterOLED.h \
+  c:/program\ files/winavr/lib/gcc/../../avr/include/avr/pgmspace.h \
   c:/program\ files/winavr/lib/gcc/../../avr/include/inttypes.h \
   c:/program\ files/winavr/lib/gcc/../../avr/include/stdint.h \
-  c:/program\ files/winavr/lib/gcc/../../avr/include/avr/pgmspace.h \
   c:\program\ files\winavr\bin\../lib/gcc/avr/4.3.3/include/stddef.h \
   c:/program\ files/winavr/lib/gcc/../../avr/include/avr/io.h \
   c:/program\ files/winavr/lib/gcc/../../avr/include/avr/sfr_defs.h \
@@ -21,11 +21,11 @@ characterOLED.o: characterOLED.c characterOLED.h \
 
 characterOLED.h:
 
+c:/program\ files/winavr/lib/gcc/../../avr/include/avr/pgmspace.h:
+
 c:/program\ files/winavr/lib/gcc/../../avr/include/inttypes.h:
 
 c:/program\ files/winavr/lib/gcc/../../avr/include/stdint.h:
-
-c:/program\ files/winavr/lib/gcc/../../avr/include/avr/pgmspace.h:
 
 c:\program\ files\winavr\bin\../lib/gcc/avr/4.3.3/include/stddef.h:
 
