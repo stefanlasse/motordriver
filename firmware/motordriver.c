@@ -465,18 +465,19 @@ ADD_DISPLAY_TEXT(8 , "Enter\nsettings menu\0"       )
 
 ADD_DISPLAY_TEXT(9 , "                \n                \0") //dummy menu
 
-ADD_DISPLAY_TEXT(10, "Set motor\ngear ratio\0"      )
-ADD_DISPLAY_TEXT(11, "Set steps per\nfull rotation\0")
-ADD_DISPLAY_TEXT(12, "Change motor\nsubstep\0"      )
-ADD_DISPLAY_TEXT(13, "Change motor\ncurrent\0"      )
-ADD_DISPLAY_TEXT(14, "Set current\ndecay mode\0"    )
-ADD_DISPLAY_TEXT(15, "Change step\nwait time\0"     )
-ADD_DISPLAY_TEXT(16, "Save current\nconfiguration\0")
-ADD_DISPLAY_TEXT(17, "Load last\nconfiguration\0"   )
+ADD_DISPLAY_TEXT(10, "Turn output\non / off\0"      )
+ADD_DISPLAY_TEXT(11, "Set motor\ngear ratio\0"      )
+ADD_DISPLAY_TEXT(12, "Set steps per\nfull rotation\0")
+ADD_DISPLAY_TEXT(13, "Change motor\nsubstep\0"      )
+ADD_DISPLAY_TEXT(14, "Change motor\ncurrent\0"      )
+ADD_DISPLAY_TEXT(15, "Set current\ndecay mode\0"    )
+ADD_DISPLAY_TEXT(16, "Change step\nwait time\0"     )
+ADD_DISPLAY_TEXT(17, "Save current\nconfiguration\0")
+ADD_DISPLAY_TEXT(18, "Load last\nconfiguration\0"   )
 
 
 #define NUMBER_OF_DISPLAY_MENUS 9
-#define NUMBER_OF_SETTINGS_MENUS 8
+#define NUMBER_OF_SETTINGS_MENUS 9
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
@@ -490,14 +491,15 @@ ADD_DISPLAY_TEXT(17, "Load last\nconfiguration\0"   )
 
 #define MENU_DUMMY                  9
 
-#define MENU_SET_GEAR_RATIO         10
-#define MENU_SET_FULL_ROTATION      11
-#define MENU_CHANGE_SUBSTEPS        12
-#define MENU_CHANGE_CURR            13
-#define MENU_SET_DECAY_MODE         14
-#define MENU_CHANGE_WAIT_TIME       15
-#define MENU_SAVE_CONFIG            16
-#define MENU_LOAD_CONFIG            17
+#define MENU_ENABLE                 10
+#define MENU_SET_GEAR_RATIO         11
+#define MENU_SET_FULL_ROTATION      12
+#define MENU_CHANGE_SUBSTEPS        13
+#define MENU_CHANGE_CURR            14
+#define MENU_SET_DECAY_MODE         15
+#define MENU_CHANGE_WAIT_TIME       16
+#define MENU_SAVE_CONFIG            17
+#define MENU_LOAD_CONFIG            18
 
 
 /* to hold a list of menu entries */
@@ -506,7 +508,8 @@ const menuItem* const menuList[] PROGMEM = {&disp_0_,  &disp_1_,  &disp_2_,
                                             &disp_6_,  &disp_7_,  &disp_8_,
                                             &disp_9_,  &disp_10_, &disp_11_,
                                             &disp_12_, &disp_13_, &disp_14_,
-                                            &disp_15_, &disp_16_, &disp_17_
+                                            &disp_15_, &disp_16_, &disp_17_,
+                                            &disp_18_
                                            };
 
 /* to keep information where we are in the menu */
@@ -624,6 +627,7 @@ void changeButtonLED(uint8_t butt, uint8_t color, uint8_t intensity);
 void updateLEDs(void);
 void changeMotorButtonLED(uint8_t motor, uint8_t enable);
 void updateMotorButtonLEDs(void);
+void updateLEDcolor(void);
 
 void degreeToSteps(uint8_t mot, double degree, double multiply);
 double stepsToDegree(uint8_t mot, int16_t steps);
@@ -695,6 +699,8 @@ char* commandIsConnected(char* param0);
 
 void commandDebugReadout(void);
 
+void commandLED(char* param0, char* param1, char* param2, char* param3);
+void commandDisplay(char* param0);
 
 
 /* =====================================================================
@@ -1318,7 +1324,7 @@ void updateMotorButtonLEDs(void){
 /* ---------------------------------------------------------------------
    update LED color of all buttons
  --------------------------------------------------------------------- */
- void updateLEDcolor(void){
+void updateLEDcolor(void){
    
   changeButtonLED(LED_MESC, RED, ledMode[0].red);
   changeButtonLED(LED_MESC, GREEN, ledMode[0].green);
@@ -1774,6 +1780,18 @@ void updateDisplayChangeValues(uint8_t thisMenu){
       }
       break;
       
+    case MENU_ENABLE:
+      for(i = 0; i <= MAX_MOTOR; i++){
+        c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
+        if(motor[i].isTurnedOn){
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "on");
+        }
+        else{
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "off");
+        }
+      }
+      break;
+      
     case MENU_SETTINGS:
       sprintf(menu.newDisplayValue[0], "test    ");
       sprintf(menu.newDisplayValue[1], "test    ");
@@ -1848,7 +1866,7 @@ void updateMenu(void){
     //or enter MENU_SETTINGS_MODE
     if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menuPrompt == MENU_SETTINGS){
       menu.newMenuMode = MENU_SETTINGS_MODE;
-      menu.newDisplayedMenu = MENU_SET_GEAR_RATIO; //first submenu, that should be displayed
+      menu.newDisplayedMenu = MENU_ENABLE; //first submenu, that should be displayed
     }
   }
   
@@ -2206,6 +2224,20 @@ void updateMenu(void){
               if(motor[i].decay > 2){
                 motor[i].decay = 0;
               }
+            }
+          }
+          break;
+          
+        case MENU_ENABLE:
+          for(i = MOTOR0; i <= MAX_MOTOR; i++){
+            if(menu.selectedMotor & (1 << i)){
+              if(motor[i].isTurnedOn && rotEncVal != 0){
+                setMotorState(i, OFF);
+              }
+              else if(!motor[i].isTurnedOn && rotEncVal != 0){
+                setMotorState(i, ON);
+              }
+              else{}
             }
           }
           break;
@@ -3621,8 +3653,8 @@ void commandLED(char* param0, char* param1, char* param2, char* param3){
   ledMode[mode].green = g;
   ledMode[mode].blue  = b;
   
-  sprintf(txString.buffer, "\nledMode[%d] = %d, %d, %d", mode, ledMode[mode].red, ledMode[mode].green, ledMode[mode].blue);
-  sendText(txString.buffer);
+  //sprintf(txString.buffer, "\nledMode[%d] = %d, %d, %d", mode, ledMode[mode].red, ledMode[mode].green, ledMode[mode].blue);
+  //sendText(txString.buffer);
   
   updateLEDcolor();
   
@@ -3632,7 +3664,7 @@ void commandLED(char* param0, char* param1, char* param2, char* param3){
 /* ---------------------------------------------------------------------
     set display brightness
  --------------------------------------------------------------------- */
-char* commandDisplay(char* param0){
+void commandDisplay(char* param0){
 
   uint8_t val = 0;
   
@@ -3657,7 +3689,7 @@ char* commandDisplay(char* param0){
     }
   }
 
-  return txString.buffer;
+  return;
 }
 
 /* =====================================================================
@@ -3960,8 +3992,6 @@ RESET:
   initMotorDelayTimer();
   initManualOperatingButtons();
   
-  /* TODO: detect motors if connected */
-  
   loadConfigFromEEPROM();
 
   /* init all available motors */
@@ -3976,6 +4006,14 @@ RESET:
   for(i = 0; i <= MAX_MOTOR; i++){
     setMotorState(i, ON);
   }
+  
+  /* detect connected motors */
+  for(i = 0; i <= MAX_MOTOR; i++){
+    if(getMotorSens(i, PORTEXP_MOTOR_MOTA) && getMotorSens(i, PORTEXP_MOTOR_MOTB)){
+      setMotorState(i, OFF); //motor is not connected --> turn it off
+    }
+  }
+  
 
   updateMenu();
   
@@ -4174,7 +4212,7 @@ RESET:
         break;
         
       case 0xA5:    /* DISPLAY */
-        sendText(commandDisplay(commandParam[1]));
+        commandDisplay(commandParam[1]);
         break;
 
       default:
