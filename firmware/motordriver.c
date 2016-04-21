@@ -385,7 +385,7 @@ ADD_COMMAND(27, "ENABFORBZONE\0",   2, 0x9B)  /* enables/disables the forbidden 
 ADD_COMMAND(28, "SETPROGSTEP\0",    6, 0x9C)  /* define a program step for manual operation */
 ADD_COMMAND(29, "GETMOTSTATE\0",    1, 0x9D)  /* is motor enabled or not */
 ADD_COMMAND(30, "DBGREADOUT\0",     0, 0x9E)  /* DEBUG information GPIO bla bla */
-ADD_COMMAND(31, "LED\0",            3, 0x9F)  /* set LED colors */
+ADD_COMMAND(31, "LED\0",            4, 0x9F)  /* set LED colors */
 
 ADD_COMMAND(32, "GETCURR\0",        1, 0xA0)  /* returns the adjusted motor current  */
 ADD_COMMAND(33, "SETCURR\0",        2, 0xA1)  /* sets the current for a motor */
@@ -538,6 +538,18 @@ typedef struct{
 
 }menuInfo;
 
+/* LED color settings */
+#define NUMBER_OF_LED_MODES 3
+
+typedef struct{
+
+  uint8_t  red;
+  uint8_t  green;
+  uint8_t  blue;
+
+}led;
+
+
 
 /* ---------------------------------------------------------------------
     global variables
@@ -559,6 +571,7 @@ volatile button buttonState;            /* information on the user interface */
 volatile rotaryEncoder rotEnc;
 volatile progStep programList[MAX_PROGRAM_STEPS];  /* get memory for internal program */
 volatile uint8_t buttLedData[BUTT_LED_CHANNELS];
+volatile led ledMode[NUMBER_OF_LED_MODES+1];  /* we got 4 LED modes [0..3] */
 
 
 /* ---------------------------------------------------------------------
@@ -580,6 +593,9 @@ uint8_t  EEMEM stepUnitEE[MAX_MOTOR+1];
 uint16_t EEMEM waitBetweenStepsEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStartEE[MAX_MOTOR+1];
 uint16_t EEMEM forbiddenZoneStopEE[MAX_MOTOR+1];
+uint8_t  EEMEM ledRedEE[NUMBER_OF_LED_MODES+1];
+uint8_t  EEMEM ledGreenEE[NUMBER_OF_LED_MODES+1];
+uint8_t  EEMEM ledBlueEE[NUMBER_OF_LED_MODES+1];
 progStep EEMEM programListEE[MAX_PROGRAM_STEPS];
 
 
@@ -750,6 +766,22 @@ void initDataStructs(void){
     forbiddenZone[i].start  = 0;
     forbiddenZone[i].stop   = 0;
   }
+  
+  ledMode[0].red = 0x0F; //color of menu escape button
+  ledMode[0].green = 0x00;
+  ledMode[0].blue = 0x00;
+  
+  ledMode[1].red = 0x00; //color of deselected motor button
+  ledMode[1].green = 0x0F;
+  ledMode[1].blue = 0x00;
+  
+  ledMode[2].red = 0x08; //color of selected motor button
+  ledMode[2].green = 0x0F;
+  ledMode[2].blue = 0x0F;
+  
+  ledMode[3].red = 0x00; //color of disconnected motor button
+  ledMode[3].green = 0x00;
+  ledMode[3].blue = 0x00;
 
   /* initialize program list */
   for(i = 0; i < MAX_PROGRAM_STEPS; i++){
@@ -1115,7 +1147,13 @@ void saveConfigToEEPROM(void){
       eeprom_update_block(&(forbiddenZone[i].start), &(forbiddenZoneStartEE[i]), sizeof(int16_t));
       eeprom_update_block(&(forbiddenZone[i].stop), &(forbiddenZoneStopEE[i]), sizeof(int16_t));
     }
-
+    
+    for(i = 0; i < NUMBER_OF_LED_MODES; i++){
+      eeprom_update_block(&(ledMode[i].red), &(ledRedEE[i]), sizeof(int8_t));
+      eeprom_update_block(&(ledMode[i].green), &(ledGreenEE[i]), sizeof(int8_t));
+      eeprom_update_block(&(ledMode[i].blue), &(ledBlueEE[i]), sizeof(int8_t));
+    }
+    
 #if SAVE_INTERNAL_PROGRAM_TO_EEPROM
     /* save internal stored programs */
     for(i = 0; i < MAX_PROGRAM_STEPS; i++){
@@ -1154,6 +1192,12 @@ void loadConfigFromEEPROM(void){
       if(forbiddenZone[i].start != forbiddenZone[i].stop){
         forbiddenZone[i].active = 1;
       }
+    }
+    
+    for(i = 0; i < NUMBER_OF_LED_MODES; i++){
+      eeprom_read_block(&(ledMode[i].red), &(ledRedEE[i]), sizeof(int8_t));
+      eeprom_read_block(&(ledMode[i].green), &(ledGreenEE[i]), sizeof(int8_t));
+      eeprom_read_block(&(ledMode[i].blue), &(ledBlueEE[i]), sizeof(int8_t));
     }
 
 #if SAVE_INTERNAL_PROGRAM_TO_EEPROM
@@ -1233,19 +1277,15 @@ void updateLEDs(void){
 /* ---------------------------------------------------------------------
    change motor button LED color/intensity
  --------------------------------------------------------------------- */
-void changeMotorButtonLED(uint8_t motor, uint8_t enable){
-    
-  if(enable){ //button lights white
-    changeButtonLED(motor, BLUE, 0x0F);
-    changeButtonLED(motor, GREEN, 0x0F);
-    changeButtonLED(motor, RED, 0x08);
-  }
-  else{ //button lights green
-    changeButtonLED(motor, BLUE, 0x00);
-    changeButtonLED(motor, GREEN, 0x0F);
-    changeButtonLED(motor, RED, 0x00);
-  }
-  //updateLEDs();
+void changeMotorButtonLED(uint8_t motor, uint8_t state){
+  
+  // state == 0 --> motor deselected
+  // state == 1 --> motor selected
+  // state == 2 --> motor disabled
+  
+  changeButtonLED(motor, RED, ledMode[state+1].red);
+  changeButtonLED(motor, GREEN, ledMode[state+1].green);
+  changeButtonLED(motor, BLUE, ledMode[state+1].blue);
 
   return;
 }
@@ -1258,14 +1298,32 @@ void updateMotorButtonLEDs(void){
   uint8_t i = 0;
 
   for(i = 0; i <= MAX_MOTOR; i++){
-    if(menu.selectedMotor & (1 << i)){
-      changeMotorButtonLED(i, 1);
+    if(motor[i].isTurnedOn){
+      if(menu.selectedMotor & (1 << i)){
+        changeMotorButtonLED(i, 1);
+      }
+      else{
+        changeMotorButtonLED(i, 0);
+      }
     }
     else{
-      changeMotorButtonLED(i, 0);
+      changeMotorButtonLED(i, 2);
     }
   }
   updateLEDs();
+  
+  return;
+}
+
+/* ---------------------------------------------------------------------
+   update LED color of all buttons
+ --------------------------------------------------------------------- */
+ void updateLEDcolor(void){
+   
+  changeButtonLED(LED_MESC, RED, ledMode[0].red);
+  changeButtonLED(LED_MESC, GREEN, ledMode[0].green);
+  changeButtonLED(LED_MESC, BLUE, ledMode[0].blue);
+  updateMotorButtonLEDs();
   
   return;
 }
@@ -2015,6 +2073,7 @@ void updateMenu(void){
         case MENU_LOAD_CONFIG:   /* load last configuration */
           loadConfigFromEEPROM();
           updateIICvalues();
+          updateLEDcolor();
           //lcd_clear();
           //lcd_string("loaded");
           OLEDclear();
@@ -2200,6 +2259,7 @@ uint8_t getPortExpanderAddress(uint8_t mot){
 
     default:
       addr = 0;
+      break;
   }
 
   return addr;
@@ -2231,6 +2291,7 @@ uint8_t getDACAddress(uint8_t mot){
 
     default:
       addr = 0;
+      break;
   }
 
   return addr;
@@ -2409,6 +2470,8 @@ void setMotorState(uint8_t mot, uint8_t state){
 
   writePortExpanderRegister(addr, GPIOA, regval);
   motor[mot].isTurnedOn = state;
+  
+  updateMotorButtonLEDs();
 
   return;
 }
@@ -3545,19 +3608,23 @@ void commandDebugReadout(){
 /* ---------------------------------------------------------------------
     debugging output for anything we'd like to know
  --------------------------------------------------------------------- */
-void commandLED(char* param0, char* param1, char* param2){
+void commandLED(char* param0, char* param1, char* param2, char* param3){
 
-  uint8_t a, b, c;
+  uint8_t mode, r, g, b;
 
-  a = (uint8_t)strtol(param0, (char **)NULL, 10);
-  b = (uint8_t)strtol(param1, (char **)NULL, 10);
-  c = (uint8_t)strtol(param2, (char **)NULL, 16);
+  mode = (uint8_t)strtol(param0, (char **)NULL, 10);
+  r = (uint8_t)strtol(param1, (char **)NULL, 10);
+  g = (uint8_t)strtol(param2, (char **)NULL, 10);
+  b = (uint8_t)strtol(param3, (char **)NULL, 10);
   
-  sprintf(txString.buffer, "\na=%d\nb=%d\nc=%d", a, b, c);
+  ledMode[mode].red   = r;
+  ledMode[mode].green = g;
+  ledMode[mode].blue  = b;
+  
+  sprintf(txString.buffer, "\nledMode[%d] = %d, %d, %d", mode, ledMode[mode].red, ledMode[mode].green, ledMode[mode].blue);
   sendText(txString.buffer);
   
-  changeButtonLED(a, b, c);
-  updateLEDs();
+  updateLEDcolor();
   
   return;
 }
@@ -3914,15 +3981,8 @@ RESET:
   
   updateDisplay();
   
-  //init LEDs with default color pattern
-  /*
-  for(i = 0; i < 4; i++){
-    changeButtonLED(i, GREEN, 0x0F);
-  }
-  */
-  changeButtonLED(LED_MESC, RED, 0x0F);
-  //updateLEDs();
-  updateMotorButtonLEDs();
+  //init LEDs with default color pattern 
+  updateLEDcolor();
   
   commandCode = 0x80;
 
@@ -3997,6 +4057,7 @@ RESET:
       case 0x8A:    /* LOADCONF: load last saved machine configuration */
         loadConfigFromEEPROM();
         updateIICvalues();
+        updateLEDcolor();
         break;
 
       case 0x8B:    /* ISMOVING */
@@ -4089,7 +4150,7 @@ RESET:
         break;
 
       case 0x9F:    /* LED */
-        commandLED(commandParam[1], commandParam[2], commandParam[3]);
+        commandLED(commandParam[1], commandParam[2], commandParam[3], commandParam[4]);
         break;
 		
       case 0xA0:    /* GETCURR */
