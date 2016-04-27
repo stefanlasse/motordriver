@@ -542,7 +542,7 @@ typedef struct{
 }menuInfo;
 
 /* LED color settings */
-#define NUMBER_OF_LED_MODES 3
+#define NUMBER_OF_LED_MODES 4
 
 typedef struct{
 
@@ -785,9 +785,13 @@ void initDataStructs(void){
   ledMode[2].green = 0x0F;
   ledMode[2].blue = 0x0F;
   
-  ledMode[3].red = 0x00; //color of disconnected motor button
+  ledMode[3].red = 0x00; //color of disconnected and deselected motor button
   ledMode[3].green = 0x00;
   ledMode[3].blue = 0x00;
+  
+  ledMode[4].red = 0x00; //color of disconnected and selected motor button
+  ledMode[4].green = 0x00;
+  ledMode[4].blue = 0x00;
 
   /* initialize program list */
   for(i = 0; i < MAX_PROGRAM_STEPS; i++){
@@ -1313,7 +1317,12 @@ void updateMotorButtonLEDs(void){
       }
     }
     else{
-      changeMotorButtonLED(i, 2);
+      if(menu.selectedMotor & (1 << i)){
+        changeMotorButtonLED(i, 3);
+      }
+      else{
+        changeMotorButtonLED(i, 2);
+      }
     }
   }
   updateLEDs();
