@@ -457,15 +457,15 @@ ADD_DISPLAY_TEXT(0 , "LK-Instruments\nSMC4242\0"    )
 ADD_DISPLAY_TEXT(1 , "Change motor\nposition\0"     )
 ADD_DISPLAY_TEXT(2 , "Set step\nmultiplier\0"       )
 ADD_DISPLAY_TEXT(3 , "Change step\nunit\0"          )
-ADD_DISPLAY_TEXT(4 , "Run internal\nprogram\0"      )
-ADD_DISPLAY_TEXT(5 , "Run with\nconstant speed\0"   )
-ADD_DISPLAY_TEXT(6 , "Define zero\nposition\0"      )
-ADD_DISPLAY_TEXT(7 , "Run zero\ncalibration\0"      )
-ADD_DISPLAY_TEXT(8 , "Enter\nsettings menu\0"       )
+ADD_DISPLAY_TEXT(4 , "Turn output\non / off\0"      )
+ADD_DISPLAY_TEXT(5 , "Run internal\nprogram\0"      )
+ADD_DISPLAY_TEXT(6 , "Run with\nconstant speed\0"   )
+ADD_DISPLAY_TEXT(7 , "Define zero\nposition\0"      )
+ADD_DISPLAY_TEXT(8 , "Run zero\ncalibration\0"      )
+ADD_DISPLAY_TEXT(9 , "Enter\nsettings menu\0"       )
 
-ADD_DISPLAY_TEXT(9 , "                \n                \0") //dummy menu
+ADD_DISPLAY_TEXT(10, "                \n                \0") //dummy menu
 
-ADD_DISPLAY_TEXT(10, "Turn output\non / off\0"      )
 ADD_DISPLAY_TEXT(11, "Set motor\ngear ratio\0"      )
 ADD_DISPLAY_TEXT(12, "Set steps per\nfull rotation\0")
 ADD_DISPLAY_TEXT(13, "Change motor\nsubstep\0"      )
@@ -476,22 +476,22 @@ ADD_DISPLAY_TEXT(17, "Save current\nconfiguration\0")
 ADD_DISPLAY_TEXT(18, "Load last\nconfiguration\0"   )
 
 
-#define NUMBER_OF_DISPLAY_MENUS 9
-#define NUMBER_OF_SETTINGS_MENUS 9
+#define NUMBER_OF_DISPLAY_MENUS 10
+#define NUMBER_OF_SETTINGS_MENUS 8
 
 #define MENU_MAIN                   0
 #define MENU_CHANGE_POSITION        1
 #define MENU_SET_STEP_MULTIPL       2
 #define MENU_CHANGE_STEP_UNIT       3
-#define MENU_RUN_PROGRAM            4
-#define MENU_CONST_ANGULAR_SPEED    5
-#define MENU_OPTICAL_ZERO_POS       6
-#define MENU_RUN_ZERO_CALIBRATION   7
-#define MENU_SETTINGS               8
+#define MENU_ENABLE                 4
+#define MENU_RUN_PROGRAM            5
+#define MENU_CONST_ANGULAR_SPEED    6
+#define MENU_OPTICAL_ZERO_POS       7
+#define MENU_RUN_ZERO_CALIBRATION   8
+#define MENU_SETTINGS               9
 
-#define MENU_DUMMY                  9
+#define MENU_DUMMY                  10
 
-#define MENU_ENABLE                 10
 #define MENU_SET_GEAR_RATIO         11
 #define MENU_SET_FULL_ROTATION      12
 #define MENU_CHANGE_SUBSTEPS        13
@@ -1027,7 +1027,7 @@ void motorZeroRun(uint8_t i){
   //uint16_t thres = 50;  /* threshold for the ADC reading of the Hall sensor */
   uint16_t j = 0;
 
-  if(forbiddenZone[i].active){
+  if(forbiddenZone[i].active || motor[i].isTurnedOn == OFF){
     /* zerorun not allowed if forbidden zone is active */
     return;
   }
@@ -1661,6 +1661,9 @@ void updateDisplayChangeValues(uint8_t thisMenu){
         if(forbiddenZone[i].active){
           sprintf(menu.newDisplayValue[i], "ForbZone");
         }
+        else if(motor[i].isTurnedOn == OFF){
+          sprintf(menu.newDisplayValue[i], "%c%s", c, "off");
+        }
         else{
           sprintf(menu.newDisplayValue[i], "%cMot %d", c, i+1);
         }
@@ -1866,7 +1869,7 @@ void updateMenu(void){
     //or enter MENU_SETTINGS_MODE
     if(getButtonEvent() == BUTTON_ROT_ENC_PRESS && menuPrompt == MENU_SETTINGS){
       menu.newMenuMode = MENU_SETTINGS_MODE;
-      menu.newDisplayedMenu = MENU_ENABLE; //first submenu, that should be displayed
+      menu.newDisplayedMenu = MENU_SET_GEAR_RATIO; //first submenu, that should be displayed
     }
   }
   
@@ -1875,11 +1878,11 @@ void updateMenu(void){
           
     rotEncVal = getRotaryEncoderEvent();  /* get wanted menu prompt */
     menuPrompt = (menuPrompt + (int8_t)rotEncVal);
-    if(menuPrompt > 9 + NUMBER_OF_SETTINGS_MENUS){
-      menuPrompt = 10;
+    if(menuPrompt > NUMBER_OF_DISPLAY_MENUS + NUMBER_OF_SETTINGS_MENUS){
+      menuPrompt = NUMBER_OF_DISPLAY_MENUS + 1;
     }
-    if(menuPrompt < 10){
-      menuPrompt = 9 + NUMBER_OF_SETTINGS_MENUS;
+    if(menuPrompt < NUMBER_OF_DISPLAY_MENUS + 1){
+      menuPrompt = NUMBER_OF_DISPLAY_MENUS + NUMBER_OF_SETTINGS_MENUS;
     }
 
     menu.newDisplayedMenu = (uint8_t)menuPrompt;
@@ -1937,7 +1940,7 @@ void updateMenu(void){
         break;
 
       case BUTTON_MENUESCAPE:
-        if(menu.currentDisplayedMenu < 10){
+        if(menu.currentDisplayedMenu < NUMBER_OF_DISPLAY_MENUS + 1){
           /* get back to the MENU_SCROLL_MODE */
           menu.newMenuMode = MENU_SCROLL_MODE;
           //menu.currentDisplayedMenu += 1;
