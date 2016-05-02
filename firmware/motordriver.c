@@ -3633,8 +3633,12 @@ char* commandIsConnected(char* param0){
  --------------------------------------------------------------------- */
 void commandDebugReadout(){
 
-  uint8_t i = 0;
-
+  uint8_t i = 1;
+  
+  sprintf(txString.buffer, "\n%d", getMotorSens(i, PORTEXP_MOTOR_SENSA));
+  sendText(txString.buffer);
+  
+/*
   for(i = 0; i < MAX_PROGRAM_STEPS; i++){
     sprintf(txString.buffer, "%d %d %d %d %d %d %d", i, programList[i].position[0],
                                                         programList[i].position[1],
@@ -3644,7 +3648,7 @@ void commandDebugReadout(){
                                                         programList[i].isActive);
     sendText(txString.buffer);
   }
-
+*/
   return;
 }
 
@@ -3862,7 +3866,7 @@ ISR(TIMER2_COMPA_vect){
           /* moving CCW */
           /* check for forbidden zone */
           if(forbiddenZone[i].active
-             && ((motor[i].actualPosition + 1) == forbiddenZone[i].stop)){
+             && ((motor[i].actualPosition - 1) == forbiddenZone[i].stop)){
             motor[i].desiredPosition = motor[i].actualPosition;
             motor[i].isMoving = 0;
           }
@@ -4195,7 +4199,7 @@ RESET:
         commandGetMotorState(commandParam[1]);
         break;
 
-      case 0x9E:
+      case 0x9E:    /* DBGREADOUT */
         commandDebugReadout();
         break;
 

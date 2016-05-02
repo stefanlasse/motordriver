@@ -39,6 +39,19 @@ class Motordriver():
   CCW       = "CCW"
   STOP      = "STOP"
   
+  SLOW      = "0"
+  FAST      = "1"
+  MIXED     = "2"
+  
+  DIM       = "1"
+  BRIGHT    = "2"
+  
+  MENUESCAPE    = "0"
+  ONDESELECTED  = "1"
+  ONSELECTED    = "2"
+  OFFDESELECTED = "3"
+  OFFSELECTED   = "4"
+  
   
   # to keep some internal information
   __subSteps = [0.0, 0.0, 0.0, 0.0]
@@ -47,6 +60,8 @@ class Motordriver():
   
   
   # --------------------------------------------------------------------------
+  # linux: interface='/dev/ttyUSB0'
+  # windows: interface='COM3'
   def __init__(self, interface='/dev/ttyUSB0'):
     self.ser = serial.Serial(
       port = interface,
@@ -268,8 +283,20 @@ class Motordriver():
       else:
         return False
     return
+    
+  # --------------------------------------------------------------------------
+  def isConnected(self, motor=0):
+    if self.__checkMotor(motor):
+      self.__sendCommand("ISCON " + str(motor))
+      resp = self.__readResponse()
+      if resp == "1":
+        return True
+      else:
+        return False
+    return
 
   # --------------------------------------------------------------------------
+  # not supported in current firmware version
   def getAnalogValue(self, channel=0):
     if self.__checkMotor(channel):
       self.__sendCommand("GETANALOG " + str(channel))
@@ -277,20 +304,20 @@ class Motordriver():
     return    
   
   # --------------------------------------------------------------------------
-  def getOpticalZeroPosition(self, motor=0):
+  def getZeroPosition(self, motor=0):
     if self.__checkMotor(motor):
-      self.__sendCommand("GETOPTZEROPOS " + str(motor))
+      self.__sendCommand("GETZEROPOS " + str(motor))
       return int(self.__readResponse())
     return
   
   # --------------------------------------------------------------------------
-  def setOpticalZeroPosition(self, motor=0, position=0):
+  def setZeroPosition(self, motor=0, position=0):
     if not isinstance(position, int):
-      print "optical zero position must be given in steps, integer."
+      print "zero position must be given in steps, integer."
       return
     
     if self.__checkMotor(motor):
-      cmd = "SETOPTZEROPOS " + str(motor) + " " + str(position)
+      cmd = "SETZEROPOS " + str(motor) + " " + str(position)
       self.__sendCommand(cmd)
     return
     
@@ -302,11 +329,11 @@ class Motordriver():
     return
   
   # --------------------------------------------------------------------------
-  def setGearRatio(self, motor=0, ratio=60.0/18.0):
+  def setGearRatio(self, motor=0, ratio=60.0/20.0):
     if self.__checkMotor(motor):
       cmd = "SETGEARRATIO " + str(motor) + " " + str(ratio)
       self.__sendCommand(cmd)
-      __gearRatio[motor] = ratio
+      self.__gearRatio[motor] = ratio
     return
     
   # --------------------------------------------------------------------------
@@ -329,7 +356,7 @@ class Motordriver():
     if self.__checkMotor(motor):
       cmd = "SETFULLROT " + str(motor) + " " + str(steps)
       self.__sendCommand(cmd)
-      __stepsPerFullRotation[motor] = steps
+      self.__stepsPerFullRotation[motor] = steps
     return
     
   # --------------------------------------------------------------------------
@@ -344,19 +371,15 @@ class Motordriver():
     if not isinstance(substeps, int):
       print "must be given as integer number"
       return
-    
-    if substeps != 0 and ((substeps and (substeps - 1)) == 0):
-      print "substeps must be a power of two"
-      return
-    
-    if substeps < 1 or substeps > 16:
+       
+    if substeps < 1 or substeps > 32:
       print "substeps must be a positive number"
       return
     
     if self.__checkMotor(motor):
       cmd = "SETSUBSTEPS " + str(motor) + " " + str(substeps)
       self.__sendCommand(cmd)
-      __subSteps[motor] = substeps
+      self.__subSteps[motor] = substeps
     return
 
   # --------------------------------------------------------------------------
@@ -380,7 +403,44 @@ class Motordriver():
       cmd = "SETWAITTIME " + str(motor) + " " + str(waittime)
       self.__sendCommand(cmd)
     return
+    
+  # --------------------------------------------------------------------------
+  def getMotorCurrent(self, motor=0):
+    if self.__checkMotor(motor):
+      self.__sendCommand("GETCURR " + str(motor))
+      return float(self.__readResponse())
+    return
+  
+  # --------------------------------------------------------------------------
+  def setMotorCurrent(self, motor=0, curr=0.5):	  
+    if curr > 2.5:
+      print "motor current must be <= 2.5 A"
+      return
+    if curr < 0.0:
+      print "motor current must be positive"
+      return
+    if self.__checkMotor(motor):
+      cmd = "SETCURR " + str(motor) + " " + str(curr)
+      self.__sendCommand(cmd)
+    return
 
+  # --------------------------------------------------------------------------
+  def getMotorDecay(self, motor=0):
+    if self.__checkMotor(motor):
+      self.__sendCommand("GETDECAY " + str(motor))
+      return int(self.__readResponse())
+    return
+
+  # --------------------------------------------------------------------------
+  def setMotorDecay(self, motor=0, decay=SLOW):
+    if not (decay == self.SLOW or decay == self.FAST or decay == self.MIXED):
+      print "err: unknown decay mode"
+      return
+    if self.__checkMotor(motor):
+      cmd = "SETDECAY " + str(motor) + " " + str(decay)
+      self.__sendCommand(cmd)
+    return
+  
   # --------------------------------------------------------------------------
   def setConstAngularVelocity(self, motor=0, direction=CW, time=10.0):
     if time < 5.0:
@@ -450,37 +510,79 @@ class Motordriver():
     # send command
     self.__sendCommand(cmd)
 
+  # --------------------------------------------------------------------------
+  def setForbiddenZone(self, motor=0, start=0, stop=0, unit=DEGREE):
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # convert position to steps:
+    startSteps = 0
+    stopSteps = 0
+    if unit is self.STEPS: 
+      startSteps = int(start)
+      stopSteps = int(stop)
+        
+    elif unit is self.DEGREE:
+      if abs(start) > 360.0 or abs(stop) > 360.0:
+        print "ERROR: start and stop must be <= 360.0 degree"
+      else:
+        startSteps = self.__degreeToSteps(start, motor)
+        stopSteps = self.__degreeToSteps(stop, motor)
+        
+    elif unit is self.PI:
+      if abs(start > 2*numpy.pi) or abs(stop > 2*numpy.pi):
+        print "ERROR: start and stop must be <= 2.0*pi"
+      else:
+        startSteps = self.__radianToSteps(start, motor)
+        stopSteps = self.__radianToSteps(stop, motor)
     
+    if startSteps > stopSteps:
+      print "stop value must be larger start value"
+      return
+    if self.__checkMotor(motor):
+      cmd = "SETFORBZONE " + str(motor) + " " + str(startSteps) + " " + str(stopSteps)
+      self.__sendCommand(cmd)
+    return
 
+  # --------------------------------------------------------------------------
+  def turnForbiddenZoneOn(self, motor=0):
+    if self.__checkMotor(motor):
+      self.__sendCommand("ENABFORBZONE " + str(motor) + " " + self.ON)
+    return
 
+  # --------------------------------------------------------------------------
+  def turnForbiddenZoneOff(self, motor=0):
+    if self.__checkMotor(motor):
+      self.__sendCommand("ENABFORBZONE " + str(motor) + " " + self.OFF)
 
+  # --------------------------------------------------------------------------
+  def display(self, mode=BRIGHT):
+    if not (mode == self.OFF or mode == self.DIM or mode == self.BRIGHT):
+      print "err: unknown display mode"
+      return
+    cmd = "DISPLAY " + str(mode)
+    self.__sendCommand(cmd)
+    return
+      
+  # --------------------------------------------------------------------------
+  def led(self, mode=BRIGHT, color=[0, 0, 0]):
+    if not (mode == self.MENUESCAPE or mode == self.ONDESELECTED or mode == self.ONSELECTED or mode == self.OFFDESELECTED or mode == self.OFFSELECTED):
+      print "err: unknown LED mode"
+      return
+    for i in range(3):
+      if color[i] > 255:
+        print "err: color value must be <= 255"
+        return
+      if color[i] < 0:
+        print "err: color value must be >= 0"
+        return
+      if not isinstance(color[i], int):
+        print "color value must be given as integer number"
+        return
+    cmd = "LED " + str(mode) + " " + str(color[0]) + " " + str(color[1]) + " " + str(color[2])
+    self.__sendCommand(cmd)
+    return
+      
+      
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      
+      
+      

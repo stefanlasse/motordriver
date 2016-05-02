@@ -11,7 +11,7 @@ import time
 driver = Motordriver(interface = '/dev/ttyUSB0')
 
 # contains the connected motors
-motorList = [0, 2]
+motorList = [0, 1, 2, 3]
 position  = [0, 0, 0, 0]
 
 # --------------------------------------------------------------------------
@@ -91,22 +91,22 @@ def checkRelativeMovement():
 # --------------------------------------------------------------------------
 # check optical zero position
 # --------------------------------------------------------------------------
-def checkOpticalZeroPosition():
-  print "Check OPTICAL ZERO POSITION"
+def checkZeroPosition():
+  print "Check ZERO POSITION"
   save = [0, 0, 0, 0]
   for i in range(4):
-    save[i] = driver.getOpticalZeroPosition(i)
+    save[i] = driver.getZeroPosition(i)
   
   for i in range(4):
-    driver.setOpticalZeroPosition(i, (i+1)*100)
+    driver.setZeroPosition(i, (i+1)*100)
   
   for i in range(4):
-    gr = driver.getOpticalZeroPosition(i)
+    gr = driver.getZeroPosition(i)
     if gr != (i+1)*100:
-      print "ERROR: OPTICAL ZERO POSITION test failed for motor " + str(i)
+      print "ERROR: ZERO POSITION test failed for motor " + str(i)
   
   for i in range(4):
-    driver.setOpticalZeroPosition(i, save[i])
+    driver.setZeroPosition(i, save[i])
   return
 
 # --------------------------------------------------------------------------
@@ -224,7 +224,7 @@ checkIDN()
 checkZeroRun()
 checkAbsoluteMovement()
 checkRelativeMovement()
-checkOpticalZeroPosition()
+checkZeroPosition()
 checkGearRatio()
 checkStepsPerFullRotation()
 checkSubSteps()

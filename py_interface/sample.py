@@ -9,10 +9,10 @@ from Motordriver import *
 import time
 
 # get connection to the motordriver
-driver = Motordriver(interface = '/dev/ttyUSB0')
+driver = Motordriver(interface = 'COM6')
 
 QWP = 0   # motor 0 is the one with the quarter wave plate
-HWP = 2   # motor 2 is the one with the half wave plate
+HWP = 1   # motor 1 is the one with the half wave plate
 
 
 # --------------------------------------------------------------------------
@@ -25,7 +25,7 @@ def measureStokesParameterAbs():
     # zero positions
     pass
 
-  time.sleep(0.5) # give some time for power meter to settle
+  time.sleep(0.1) # give some time for power meter to settle
   # measure power here: S0 = P(QWP) + P(HWP)
   # measure power here: S1 = P(QWP) - P(HWP)
   print "got S0 and S1"
@@ -38,7 +38,7 @@ def measureStokesParameterAbs():
     # positions for S2
     pass
   
-  time.sleep(0.5) # give some time for power meter to settle
+  time.sleep(0.1) # give some time for power meter to settle
   # measure power here: S2 = P(QWP) - P(HWP)
   print "got S2"
   
@@ -49,7 +49,7 @@ def measureStokesParameterAbs():
     # positions for S3
     pass
   
-  time.sleep(0.5) # give some time for power meter to settle
+  time.sleep(0.1) # give some time for power meter to settle
   # measure power here: S3 = P(QWP) - P(HWP)
   print "got S3"
   return
@@ -57,8 +57,8 @@ def measureStokesParameterAbs():
 
 def setStokesProgramToDriver():
   driver.defineInternalProgramStep(0, [0.0, 0.0, 0.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
-  driver.defineInternalProgramStep(1, [45.0, 0, 22.5, 0.0], driver.DEGREE, driver.ABSOLUTE)
-  driver.defineInternalProgramStep(2, [45.0, 0, 45.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
+  driver.defineInternalProgramStep(1, [45.0, 22.5, 0.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
+  driver.defineInternalProgramStep(2, [45.0, 45.0, 0.0, 0.0], driver.DEGREE, driver.ABSOLUTE)
 
 
 
