@@ -241,7 +241,7 @@ typedef struct{
   double   subSteps;               /* could be 1, 2, 4, 8, 16, 32 */
   int8_t   stepUnit;               /* could be: step, degree, radian */
   double   stepMultiplier;         /* multiplies the default step just at manual operation */
-  uint16_t waitBetweenSteps;       /* in milliseconds */
+  uint16_t waitBetweenSteps;       /* in 0.25 milliseconds */
   uint16_t delayCounter;           /* counts the waited milliseconds */
   int8_t   angularVelocity;        /* in seconds per full rotation */
   double   current;                /* in ampere */
@@ -727,8 +727,8 @@ void initDataStructs(void){
     motor[i].subSteps             = 4.0f;
     motor[i].stepMultiplier       = 1.0f;
     motor[i].stepUnit             = MOTOR_STEP_UNIT_DEGREE;
-    motor[i].waitBetweenSteps     = 3;
-    motor[i].delayCounter         = 2*motor[i].waitBetweenSteps-1;
+    motor[i].waitBetweenSteps     = 12;
+    motor[i].delayCounter         = motor[i].waitBetweenSteps-1;
     motor[i].angularVelocity      = OFF;
     motor[i].current              = 1.0;
     motor[i].decay                = 0;
@@ -963,7 +963,22 @@ void initMotorDelayTimer(void){
   TCNT2   = 0;
 
   /* start the timer/counter */
-  TCCR2B |= (1<<CS22)|(1<<CS20);  /* prescaler = 1024 --> 51.2 us per clock */
+  // CS22 CS21 CS20 Bedeutung
+  // 0    0 	 0 	  keine (Der Timer ist angehalten)
+  // 0 	  0    1   	Vorteiler: 1
+  // 0  	1    0   	Vorteiler: 8
+  // 0   	1    1   	Vorteiler: 32
+  // 1  	0    0  	Vorteiler: 64
+  // 1  	0    1  	Vorteiler: 128
+  // 1  	1 	 0  	Vorteiler: 256
+  // 1 	  1 	 1  	Vorteiler: 1024
+  
+  // ISR_Freq = F_CPU / ( Prescaler * ( ORC2 + 1 )) 
+  // ORC2 + 1 = ( F_CPU * ( 1 / ISR_Freq )) / Prescaler
+  
+  //TCCR2B |= (1<<CS22)|(1<<CS20); // prescaler = 128 --> 6.4 us per clock with OCR2A = 77 --> 499.2 us
+  //TCCR2B |= (1<<CS21);  // prescaler = 8 --> 0.4 us per clock with OCR2A = 124 --> 50 us
+  TCCR2B |= (1<<CS22); // prescaler = 64 --> 12.8 us per clock with OCR2A = 77 --> 249.6 us
 
   return;
 }
@@ -1000,7 +1015,7 @@ void moveMotorRelative(uint8_t mot, int16_t steps){
     PORTA &= ~(1 << (2*mot));
 
     for(j = 0; j < motor[mot].waitBetweenSteps; j++){
-      _delay_ms(1);
+      _delay_us(200);
     }
   }
 
@@ -1048,13 +1063,16 @@ void motorZeroRun(uint8_t i){
   /* fist step:
    * move 360 degree to find the roughly position of the magnetic zero point.
    * this will be done with fast moving */
-  motor[i].waitBetweenSteps = 1;    /* set 1 ms for fast moving */
+  //motor[i].waitBetweenSteps = 4;    /* set 1 ms for fast moving */
 
   /* in case we are at any possible zero position: move out */
   //while(getADCvalue(i) < thres){
   while(getMotorSens(i, PORTEXP_MOTOR_SENSA)){
     moveMotorRelative(i, -200);
   }
+  
+  // wait for short time before accelerating into the other direction
+  _delay_ms(10);
 
   /* start first search for zero point */
   for(j = 0; j < (uint16_t)round(stepsPerRound); j++){
@@ -1080,7 +1098,7 @@ void motorZeroRun(uint8_t i){
   moveMotorRelative(i, (int16_t)round(0.75*stepsPerRound) - 200);
 
   /* now get slow to find zero position precisely */
-  motor[i].waitBetweenSteps = 5;
+  motor[i].waitBetweenSteps = 3 * keepWaitTime;
 
   /* and move till the threshold is reached */
   //while(getADCvalue(i) > thres){
@@ -1653,7 +1671,7 @@ void updateDisplayChangeValues(uint8_t thisMenu){
     case MENU_CHANGE_WAIT_TIME:
       for(i = 0; i <= MAX_MOTOR; i++){
         c = (menu.selectedMotor & (1 << i)) ? 0x7E : ' ';
-        sprintf(menu.newDisplayValue[i], "%c%d ms", c, motor[i].waitBetweenSteps);
+        sprintf(menu.newDisplayValue[i], "%c%.2fms", c, 0.25 * (float) motor[i].waitBetweenSteps);
       }
       break;
 
@@ -2038,7 +2056,7 @@ void updateMenu(void){
                 /* wait time is at least 1 ms */
                 motor[i].waitBetweenSteps = 1;
               }
-              motor[i].delayCounter = 2*motor[i].waitBetweenSteps-1;
+              motor[i].delayCounter = motor[i].waitBetweenSteps-1;
             }
           }
           break;
@@ -3254,7 +3272,7 @@ char* commandGetWaitTime(char* param0){
     sprintf(txString.buffer, "err: unknown motor: %d", i);
   }
   else{
-    sprintf(txString.buffer, "%d", motor[i].waitBetweenSteps);
+    sprintf(txString.buffer, "%.2f", 0.25 * (float) motor[i].waitBetweenSteps);
   }
 
   return txString.buffer;
@@ -3266,7 +3284,7 @@ char* commandGetWaitTime(char* param0){
 void commandSetWaitTime(char* param0, char* param1){
 
   uint8_t i = 0;
-  uint16_t val = 0;
+  double val = 0.0;
 
   i = (uint8_t)strtol(param0, (char **)NULL, 10);
 
@@ -3276,8 +3294,11 @@ void commandSetWaitTime(char* param0, char* param1){
     return;
   }
   else{
-    val = (uint16_t)atoi(param1);
-    motor[i].waitBetweenSteps = val;
+    val = 4 * atof(param1);
+    if(val < 1){
+      val = 1;
+    }
+    motor[i].waitBetweenSteps = (int) val;
   }
 
   return;
@@ -3311,14 +3332,14 @@ void commandSetConstSpeed(char* param0, char* param1, char* param2){
     if(strcmp(param1, "STOP") == 0){
       ATOMIC_BLOCK(ATOMIC_FORCEON){
         motor[i].isMovingInfinite = MOTOR_MOVE_INFINITE_STOP;
-        motor[i].waitBetweenSteps = 3;
+        motor[i].waitBetweenSteps = 12;
         motor[i].desiredPosition  = motor[i].actualPosition;
       }
       return;
     }
 
     /* now calculate wait time between two steps in ms */
-    waitTime = (uint16_t)round((fabs(val)*1000.0f) / ( motor[i].gearRatio
+    waitTime = (uint16_t)round((fabs(val)*4000.0f) / ( motor[i].gearRatio
                                                       *motor[i].stepsPerFullRotation
                                                       *motor[i].subSteps));
 
@@ -3888,7 +3909,7 @@ ISR(TIMER2_COMPA_vect){
           }
         }
         /* so we will move and therefore set back the delay counter */
-        motor[i].delayCounter = 2*motor[i].waitBetweenSteps-1;
+        motor[i].delayCounter = motor[i].waitBetweenSteps-1;
       }
     }
   }
